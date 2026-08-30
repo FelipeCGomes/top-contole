@@ -1,6 +1,7 @@
 'use strict';
 
-const VAULT_KEY = 'stop_gastos_vault_v1';
+const VAULT_KEY = 'stop_gastos_vault_v1'; // legado, somente para migração
+const STATE_KEY_PREFIX = 'stop_gastos_state_v3_';
 const SESSION_KEY_STORAGE = 'stop_gastos_session_key_v1';
 const SESSION_EXPIRY_STORAGE = 'stop_gastos_session_expiry_v1';
 const REFRESH_KEY_STORAGE = 'stop_gastos_refresh_key_v1';
@@ -23,6 +24,10 @@ let cloudAuthUnsubscribe = null;
 let cloudPushTimer = null;
 let cloudApplying = false;
 let cloudLastSyncedAt = null;
+let localStateUpdatedAt = '';
+let familyContext = null;
+let familyStates = {};
+let familyStateUnsubs = [];
 
 const fallbackCategories = [
   {id:'moradia',name:'Moradia',icon:'🏠',color:'#7c5cff'},
@@ -50,7 +55,8 @@ const pageMeta = {
   cards:['Cartões','Faturas, limites e parcelamentos'],
   bills:['Contas a pagar','Compromissos financeiros futuros'],
   reports:['Relatórios','Entenda seus hábitos financeiros'],
-  settings:['Configurações','Segurança, aparência e backups']
+  family:['Família','Membros, gastos e visão consolidada'],
+  settings:['Configurações','Conta Google, aparência e backups']
 };
 
 const $ = function(sel, root){ return (root || document).querySelector(sel); };
@@ -68,21 +74,7 @@ async function init(){
   bindCloudEvents();
   setupPwa();
   handleCloudReady();
-
-  const existing = localStorage.getItem(VAULT_KEY);
-  if(existing){
-    const restored = await restoreSession(existing);
-    if(restored){
-      ensureRecurringForMonth(selectedMonth);
-      await saveVault();
-      openApp();
-      return;
-    }
-    $('#unlockBox').hidden = false;
-  }else{
-    clearSessionCredentials();
-    $('#setupBox').hidden = false;
-  }
+  showSignedOutScreen();
 }
 
 async function loadDefaults(){
@@ -141,8 +133,6 @@ function normalizeState(data){
 }
 
 function bindEvents(){
-  $('#setupForm').addEventListener('submit', setupVault);
-  $('#unlockForm').addEventListener('submit', unlockVault);
   $('#menuBtn').addEventListener('click', function(){ $('#sidebar').classList.toggle('open'); });
   $('#themeBtn').addEventListener('click', quickToggleTheme);
   $('#quickAddBtn').addEventListener('click', function(){ openModal('transaction'); });
@@ -152,17 +142,14 @@ function bindEvents(){
     ensureRecurringForMonth(selectedMonth);
     await saveVault();
     renderAll();
+    if(familyContext) renderFamily();
   });
 
   $$('[data-nav]').forEach(function(el){
-    el.addEventListener('click', function(){
-      navigate(el.getAttribute('data-nav'));
-    });
+    el.addEventListener('click', function(){ navigate(el.getAttribute('data-nav')); });
   });
   $$('[data-open]').forEach(function(el){
-    el.addEventListener('click', function(){
-      openModal(el.getAttribute('data-open'));
-    });
+    el.addEventListener('click', function(){ openModal(el.getAttribute('data-open')); });
   });
 
   $('#modalClose').addEventListener('click', closeModal);
@@ -173,7 +160,6 @@ function bindEvents(){
   $('#recurringForm').addEventListener('submit', saveRecurringForm);
   $('#budgetForm').addEventListener('submit', saveBudgetForm);
   $('#goalForm').addEventListener('submit', saveGoalForm);
-  $('#backupPinForm').addEventListener('submit', restoreBackupWithPin);
 
   $('#transactionSearch').addEventListener('input', renderTransactions);
   $('#transactionTypeFilter').addEventListener('change', renderTransactions);
@@ -193,14 +179,9 @@ function bindEvents(){
     renderAll();
     toast('Limite mensal atualizado.','success');
   });
-  $('#autoLockSelect').addEventListener('change', async function(e){
-    appState.settings.autoLockMinutes = Number(e.target.value);
-    await saveVault();
-    resetAutoLock();
-  });
+
   $('#backupBtn').addEventListener('click', exportEncryptedBackup);
   $('#restoreInput').addEventListener('change', readBackupFile);
-  $('#lockBtn').addEventListener('click', lockVault);
   $('#demoBtn').addEventListener('click', loadDemoData);
   $('#wipeBtn').addEventListener('click', wipeVault);
   $('#exportCsvBtn').addEventListener('click', exportCsv);
@@ -209,65 +190,33 @@ function bindEvents(){
   $('#confirmOk').addEventListener('click', function(){ resolveConfirm(true); });
   $('#confirmBackdrop').addEventListener('click', function(e){ if(e.target === e.currentTarget) resolveConfirm(false); });
 
-  ['pointerdown','keydown','touchstart'].forEach(function(evt){
-    document.addEventListener(evt, function(){ if(appState) resetAutoLock(); }, {passive:true});
-  });
-
-  window.addEventListener('storage', async function(e){
-    if(e.key !== VAULT_KEY || !appState || !sessionKey || !e.newValue) return;
+  window.addEventListener('storage', function(e){
+    const key=currentStateKey();
+    if(!cloudUser || e.key!==key || !e.newValue) return;
     try{
-      const vault = JSON.parse(e.newValue);
-      const data = await decryptVaultWithKey(vault,sessionKey);
-      appState = normalizeState(data);
-      sessionSalt = fromB64(vault.salt);
-      renderAll();
-      toast('Alterações sincronizadas automaticamente.','info');
-    }catch(err){
-      toast('O cofre mudou e precisa ser desbloqueado novamente.','info');
-      lockVault();
-    }
+      const wrapper=JSON.parse(e.newValue);
+      if(wrapper && wrapper.state){
+        appState=normalizeState(wrapper.state);
+        localStateUpdatedAt=wrapper.clientUpdatedAt || '';
+        renderAll();
+        renderFamily();
+      }
+    }catch(err){}
   });
 }
 
 async function setupVault(e){
-  e.preventDefault();
-  const pin = $('#setupPin').value;
-  const confirm = $('#setupPinConfirm').value;
-  if(pin.length < 4) return toast('Use um PIN com pelo menos 4 caracteres.','error');
-  if(pin !== confirm) return toast('Os PINs não conferem.','error');
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  sessionKey = await deriveKey(pin, salt);
-  sessionSalt = salt;
-  appState = makeInitialState();
-  await persistSession();
-  await saveVault();
-  $('#setupForm').reset();
-  openApp();
-  toast('Cofre criado e criptografado com sucesso.','success');
+  if(e && e.preventDefault) e.preventDefault();
+  await cloudSignIn();
 }
 
 async function unlockVault(e){
-  e.preventDefault();
-  const pin = $('#unlockPin').value;
-  try{
-    const vault = JSON.parse(localStorage.getItem(VAULT_KEY));
-    const result = await decryptVault(vault,pin);
-    appState = normalizeState(result.data);
-    sessionKey = result.key;
-    sessionSalt = fromB64(vault.salt);
-    await persistSession();
-    $('#unlockForm').reset();
-    ensureRecurringForMonth(selectedMonth);
-    await saveVault();
-    openApp();
-    toast('Cofre desbloqueado.','success');
-  }catch(err){
-    clearSessionCredentials();
-    toast('PIN incorreto ou cofre inválido.','error');
-  }
+  if(e && e.preventDefault) e.preventDefault();
+  await cloudSignIn();
 }
 
 function openApp(){
+  if(!cloudUser) return showSignedOutScreen();
   $('#lockScreen').hidden = true;
   $('#appShell').hidden = false;
   populateCategorySelects();
@@ -275,38 +224,22 @@ function openApp(){
   syncSettingsFields();
   renderAll();
   renderCloudUi();
-  resetAutoLock();
 }
 
 function lockVault(){
-  appState = null;
-  sessionKey = null;
-  sessionSalt = null;
-  clearSessionCredentials();
-  clearTimeout(lockTimer);
-  $('#appShell').hidden = true;
-  $('#lockScreen').hidden = false;
-  $('#setupBox').hidden = true;
-  $('#unlockBox').hidden = false;
-  $('#unlockPin').value = '';
-  setTimeout(function(){ $('#unlockPin').focus(); },80);
+  cloudSignOut();
 }
 
 async function wipeVault(){
-  const ok = await confirmDialog('Apagar todos os dados?','Esta ação remove o cofre deste dispositivo e não pode ser desfeita. Exporte um backup antes se quiser preservar seus dados.');
+  if(!cloudUser || !appState) return;
+  const ok = await confirmDialog('Apagar seus dados financeiros?','Esta ação limpa seus dados neste dispositivo e sincroniza uma base vazia na sua conta Google. Os dados dos outros membros da família não serão apagados.');
   if(!ok) return;
-  localStorage.removeItem(VAULT_KEY);
-  clearSessionCredentials();
-  appState = null;
-  sessionKey = null;
-  sessionSalt = null;
-  clearTimeout(lockTimer);
-  $('#appShell').hidden = true;
-  $('#lockScreen').hidden = false;
-  $('#unlockBox').hidden = true;
-  $('#setupBox').hidden = false;
-  $('#setupForm').reset();
-  toast('Dados locais removidos.','success');
+  appState = makeInitialState();
+  localStateUpdatedAt = new Date().toISOString();
+  await saveVault(true);
+  renderAll();
+  renderFamily();
+  toast('Seus dados financeiros foram apagados.','success');
 }
 
 async function deriveKey(pin,salt){
@@ -320,25 +253,18 @@ async function deriveKey(pin,salt){
   );
 }
 
-async function saveVault(){
-  if(!appState || !sessionKey || !sessionSalt) return;
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const bytes = new TextEncoder().encode(JSON.stringify(appState));
-  const cipher = await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},sessionKey,bytes);
-  const vault = {
-    app:'stop-gastos',
-    version:APP_VERSION,
-    kdf:'PBKDF2-SHA256',
-    iterations:KDF_ITERATIONS,
-    algorithm:'AES-GCM-256',
-    salt:toB64(sessionSalt),
-    iv:toB64(iv),
-    cipher:toB64(new Uint8Array(cipher)),
-    updatedAt:new Date().toISOString()
-  };
-  const vaultText=JSON.stringify(vault);
-  localStorage.setItem(VAULT_KEY,vaultText);
-  if(!cloudApplying) queueCloudPush(vaultText);
+async function saveVault(immediate=false){
+  if(!appState || !cloudUser) return;
+  const clientUpdatedAt=new Date().toISOString();
+  localStateUpdatedAt=clientUpdatedAt;
+  const wrapper={app:'stop-gastos',version:APP_VERSION,clientUpdatedAt,state:appState};
+  localStorage.setItem(currentStateKey(),JSON.stringify(wrapper));
+
+  if(familyContext && familyStates && cloudUser){
+    familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt};
+  }
+
+  queueCloudPush(clone(appState),immediate);
 }
 
 async function decryptVault(vault,pin){
@@ -444,11 +370,16 @@ function fromB64(value){
 }
 
 async function exportEncryptedBackup(){
-  await saveVault();
-  const vault = localStorage.getItem(VAULT_KEY);
-  if(!vault) return;
-  downloadBlob(vault,'stop-gastos-backup-' + new Date().toISOString().slice(0,10) + '.json','application/json');
-  toast('Backup criptografado exportado.','success');
+  if(!appState) return;
+  const backup={
+    app:'stop-gastos',
+    version:APP_VERSION,
+    format:'google-auth-json',
+    exportedAt:new Date().toISOString(),
+    state:appState
+  };
+  downloadBlob(JSON.stringify(backup,null,2),'stop-gastos-backup-' + new Date().toISOString().slice(0,10) + '.json','application/json');
+  toast('Backup JSON exportado.','success');
 }
 
 async function readBackupFile(e){
@@ -457,35 +388,23 @@ async function readBackupFile(e){
   if(!file) return;
   try{
     const json = JSON.parse(await file.text());
-    if(json.app !== 'stop-gastos' || !json.cipher) throw new Error('format');
-    pendingBackup = json;
-    openModal('backupPin');
+    if(json.app!=='stop-gastos' || !json.state) throw new Error('format');
+    const imported=normalizeState(json.state);
+    const ok=await confirmDialog('Restaurar este backup?','Seus dados atuais serão substituídos e a alteração será sincronizada com sua conta Google.');
+    if(!ok) return;
+    appState=imported;
+    await saveVault(true);
+    renderAll();
+    renderFamily();
+    toast('Backup restaurado com sucesso.','success');
   }catch(err){
-    toast('Arquivo de backup inválido.','error');
+    toast('Backup inválido. Backups antigos protegidos por PIN precisam ser migrados antes.','error');
   }
 }
 
 async function restoreBackupWithPin(e){
-  e.preventDefault();
-  if(!pendingBackup) return;
-  try{
-    const pin = $('#backupImportPin').value;
-    const result = await decryptVault(pendingBackup,pin);
-    const imported = normalizeState(result.data);
-    const ok = await confirmDialog('Restaurar este backup?','Os dados atuais serão substituídos pelo conteúdo do arquivo importado.');
-    if(!ok) return;
-    appState = imported;
-    pendingBackup = null;
-    await saveVault();
-    closeModal();
-    populateCategorySelects();
-    syncSettingsFields();
-    applyTheme();
-    renderAll();
-    toast('Backup restaurado com sucesso.','success');
-  }catch(err){
-    toast('PIN do backup incorreto ou arquivo corrompido.','error');
-  }
+  if(e && e.preventDefault) e.preventDefault();
+  toast('O Stop Gastos agora usa somente autenticação Google.','info');
 }
 
 function navigate(name){
@@ -508,6 +427,7 @@ function navigate(name){
   if(name === 'goals') renderGoals();
   if(name === 'calendar') renderCalendar();
   if(name === 'reports') renderReports();
+  if(name === 'family') refreshFamilyData();
   if(name === 'settings'){ syncSettingsFields(); renderCategoryManager(); }
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -956,13 +876,11 @@ function openModal(type,data){
   if(type === 'backupPin'){
     $('#modalTitle').textContent = 'Restaurar backup';
     $('#modalEyebrow').textContent = 'CRIPTOGRAFADO';
-    $('#backupPinForm').hidden = false;
-    $('#backupPinForm').reset();
   }
 }
 
 function closeModalForms(){
-  ['transactionForm','recurringForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm','backupPinForm'].forEach(function(id){
+  ['transactionForm','recurringForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm'].forEach(function(id){
     const el=$('#'+id); if(el) el.hidden = true;
   });
 }
@@ -1253,7 +1171,6 @@ function syncSettingsFields(){
   if(!appState) return;
   $('#themeSelect').value = appState.settings.theme || 'system';
   $('#monthlyBudgetInput').value = Number(appState.settings.monthlyBudget || 0);
-  $('#autoLockSelect').value = String(Number(appState.settings.autoLockMinutes || 0));
   if($('#privacyBtn')) $('#privacyBtn').textContent = appState.settings.privacyMode ? '🙈' : '👁';
 }
 
@@ -1281,20 +1198,7 @@ function resolvedTheme(){
 }
 
 function resetAutoLock(){
-  clearTimeout(lockTimer);
-  if(!appState) return;
-  const minutes = Number(appState.settings.autoLockMinutes || 0);
-
-  if(minutes > 0){
-    const expiry = Date.now() + minutes*60*1000;
-    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
-    localStorage.setItem(REFRESH_EXPIRY_STORAGE,String(expiry));
-    lockTimer = setTimeout(lockVault,minutes*60*1000);
-  }else{
-    const expiry = Date.now() + 12*60*60*1000;
-    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
-    localStorage.setItem(REFRESH_EXPIRY_STORAGE,String(expiry));
-  }
+  // A persistência da sessão é controlada pelo Firebase Authentication.
 }
 
 function exportCsv(){
@@ -1413,6 +1317,7 @@ function esc(value){
 
 
 function bindCloudEvents(){
+  bindFamilyEvents();
   const signInButtons=['googleLoginBtn','googleSettingsBtn'];
   signInButtons.forEach(function(id){
     const el=$('#'+id);
@@ -1473,33 +1378,76 @@ async function handleCloudUser(user){
     try{cloudVaultUnsubscribe();}catch(err){}
     cloudVaultUnsubscribe=null;
   }
+  clearFamilyWatchers();
+
+  if(!cloudUser){
+    familyContext=null;
+    familyStates={};
+    appState=null;
+    localStateUpdatedAt='';
+    renderCloudUi();
+    showSignedOutScreen();
+    return;
+  }
 
   renderCloudUi();
-
   const cloud=window.StopGastosCloud;
-  if(!cloudUser || !cloud || !cloud.ready) return;
+  if(!cloud || !cloud.ready) return;
 
-  setCloudStatus('syncing','Conectado · verificando base na nuvem');
+  setCloudStatus('syncing','Conectado · carregando seus dados');
 
-  cloudVaultUnsubscribe=cloud.watchVault(function(remote){
-    reconcileCloudVault(remote).catch(function(err){
-      setCloudStatus('error','Falha ao aplicar atualização da nuvem');
-    });
-  });
+  let local=readLocalState();
+  if(!local){
+    const migrated=await tryMigrateLegacyState();
+    if(migrated){
+      appState=migrated;
+      localStateUpdatedAt=new Date().toISOString();
+      writeLocalState();
+      local=readLocalState();
+      toast('Seus dados locais anteriores foram migrados para o login Google.','success');
+    }
+  }
 
   try{
-    const remote=await cloud.pullVault();
-    const local=localStorage.getItem(VAULT_KEY);
+    const remote=await cloud.pullState();
+    applyBestState(local,remote);
 
-    if(remote && remote.vault){
-      await reconcileCloudVault(remote);
-    }else if(local){
-      queueCloudPush(local,true);
-    }else{
-      setCloudStatus('synced','Conta conectada · crie um cofre para iniciar');
+    if(!appState){
+      appState=makeInitialState();
+      localStateUpdatedAt=new Date().toISOString();
+      writeLocalState();
+      const result=await cloud.pushState(clone(appState));
+      if(result?.clientUpdatedAt){
+        localStateUpdatedAt=result.clientUpdatedAt;
+        writeLocalState();
+      }
+    }else if(!remote || !remote.state || stateTime(localStateUpdatedAt)>=stateTime(remote.clientUpdatedAt)){
+      queueCloudPush(clone(appState),true);
     }
+
+    ensureRecurringForMonth(selectedMonth);
+    openApp();
+
+    cloudVaultUnsubscribe=cloud.watchState(function(incoming){
+      reconcileCloudState(incoming);
+    });
+
+    await refreshFamilyData();
+    cloudLastSyncedAt=new Date();
+    setCloudStatus('synced','Sincronizado com sua conta Google');
   }catch(err){
-    setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Não foi possível consultar o Firebase':'Offline · usando cache local');
+    if(local && local.state){
+      appState=normalizeState(local.state);
+      localStateUpdatedAt=local.clientUpdatedAt || '';
+      openApp();
+      setCloudStatus('offline','Usando dados locais · sincronização pendente');
+    }else{
+      appState=makeInitialState();
+      localStateUpdatedAt=new Date().toISOString();
+      writeLocalState();
+      openApp();
+      setCloudStatus('error','Não foi possível carregar o Firebase');
+    }
   }
 }
 
@@ -1527,29 +1475,38 @@ async function cloudSignOut(){
   const cloud=window.StopGastosCloud;
   if(!cloud) return;
   try{
+    clearFamilyWatchers();
+    if(cloudVaultUnsubscribe){try{cloudVaultUnsubscribe();}catch(err){} cloudVaultUnsubscribe=null;}
     await cloud.signOutGoogle();
     cloudUser=null;
-    if(cloudVaultUnsubscribe){try{cloudVaultUnsubscribe();}catch(err){} cloudVaultUnsubscribe=null;}
+    appState=null;
+    familyContext=null;
+    familyStates={};
+    showSignedOutScreen();
     renderCloudUi();
-    toast('Conta Google desconectada. O cofre local foi mantido.','success');
+    toast('Conta Google desconectada.','success');
   }catch(err){
     toast('Não foi possível sair da conta Google.','error');
   }
 }
 
-function queueCloudPush(vaultText,immediate){
+function queueCloudPush(state,immediate){
   const cloud=window.StopGastosCloud;
-  if(!vaultText || !cloud || !cloud.ready || !cloud.isSignedIn()) return;
+  if(!state || !cloud || !cloud.ready || !cloud.isSignedIn()) return;
 
   clearTimeout(cloudPushTimer);
   const run=async function(){
     try{
-      setCloudStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'Sincronizando cofre criptografado…':'Offline · sincronização pendente');
-      await cloud.pushVault(vaultText);
+      setCloudStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'Sincronizando…':'Offline · alteração salva localmente');
+      const result=await cloud.pushState(state);
+      if(result && result.clientUpdatedAt){
+        localStateUpdatedAt=result.clientUpdatedAt;
+        writeLocalState();
+      }
       cloudLastSyncedAt=new Date();
       setCloudStatus('synced','Sincronizado agora');
     }catch(err){
-      setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao enviar para o Firebase':'Offline · sincronização pendente');
+      setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · sincronização pendente');
     }
   };
 
@@ -1570,103 +1527,42 @@ async function forceCloudSync(showToast=true){
 
   try{
     setCloudStatus('syncing','Comparando dispositivo e nuvem…');
-    const remote=await cloud.pullVault();
-    await reconcileCloudVault(remote);
+    const remote=await cloud.pullState();
+    await reconcileCloudState(remote);
 
-    const local=localStorage.getItem(VAULT_KEY);
-    if(local){
-      const localTs=vaultTimestamp(local);
-      const remoteTs=remote && remote.vault ? vaultTimestamp(remote.vault) : 0;
-      if(!remote || !remote.vault || localTs>=remoteTs){
-        await cloud.pushVault(local);
+    if(appState){
+      const remoteTs=remote ? stateTime(remote.clientUpdatedAt) : 0;
+      if(!remote || !remote.state || stateTime(localStateUpdatedAt)>=remoteTs){
+        const result=await cloud.pushState(clone(appState));
+        if(result?.clientUpdatedAt){
+          localStateUpdatedAt=result.clientUpdatedAt;
+          writeLocalState();
+        }
       }
     }
+
+    await refreshFamilyData();
     cloudLastSyncedAt=new Date();
     setCloudStatus('synced','Sincronização concluída');
-    if(showToast) toast('Cofre sincronizado com o Firebase.','success');
+    if(showToast) toast('Dados sincronizados com o Firebase.','success');
   }catch(err){
-    setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · dados protegidos no cache local');
-    if(showToast) toast(navigator.onLine?'Não foi possível sincronizar agora.':'Sem internet. As alterações serão sincronizadas depois.','info');
+    setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · dados salvos neste dispositivo');
+    if(showToast) toast(navigator.onLine?'Não foi possível sincronizar agora.':'Sem internet. As alterações serão enviadas quando a conexão voltar.','info');
   }
 }
 
 async function reconcileCloudVault(remote){
-  if(!remote || !remote.vault) return;
-
-  const local=localStorage.getItem(VAULT_KEY);
-  const remoteTs=vaultTimestamp(remote.vault);
-  const localTs=local ? vaultTimestamp(local) : 0;
-
-  if(local && localTs>remoteTs){
-    if(!remote.hasPendingWrites) queueCloudPush(local);
-    return;
-  }
-
-  if(local && localTs===remoteTs){
-    if(!remote.hasPendingWrites){
-      cloudLastSyncedAt=new Date();
-      setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Cache Firebase disponível':'Sincronizado');
-    }
-    return;
-  }
-
-  // Se o app já está desbloqueado, primeiro validamos o cofre remoto
-  // com a chave atual. Nunca substituímos o cofre local antes disso.
-  if(appState && sessionKey){
-    try{
-      const vault=JSON.parse(remote.vault);
-      const data=await decryptVaultWithKey(vault,sessionKey);
-
-      cloudApplying=true;
-      localStorage.setItem(VAULT_KEY,remote.vault);
-      appState=normalizeState(data);
-      sessionSalt=fromB64(vault.salt);
-      await persistSession();
-      renderAll();
-
-      cloudLastSyncedAt=new Date();
-      setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base atualizada pela nuvem');
-      toast('Alterações de outro dispositivo foram sincronizadas.','info');
-    }catch(err){
-      // Mantém a sessão e a base local intactas.
-      setCloudStatus('error','Conflito de cofre: a versão da nuvem usa outra chave/PIN');
-      toast('A nuvem possui um cofre incompatível com esta sessão. Seus dados locais foram preservados.','error');
-    }finally{
-      cloudApplying=false;
-    }
-    return;
-  }
-
-  // Sem sessão desbloqueada, é seguro armazenar a versão remota
-  // e solicitar o PIN para abri-la.
-  cloudApplying=true;
-  try{
-    localStorage.setItem(VAULT_KEY,remote.vault);
-    clearSessionCredentials();
-    $('#setupBox').hidden=true;
-    $('#unlockBox').hidden=false;
-    $('#unlockPin').value='';
-    const lock=$('#lockScreen');
-    if(lock) lock.hidden=false;
-    const shell=$('#appShell');
-    if(shell) shell.hidden=true;
-
-    cloudLastSyncedAt=new Date();
-    setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base encontrada na nuvem');
-    toast('Cofre encontrado na sua conta Google. Digite o mesmo PIN para abri-lo.','success');
-  }finally{
-    cloudApplying=false;
-  }
+  return reconcileCloudState(remote);
 }
 
-function vaultTimestamp(vaultText){
-  try{
-    const value=JSON.parse(vaultText);
-    const time=Date.parse(value.updatedAt || '');
-    return Number.isFinite(time) ? time : 0;
-  }catch(err){
-    return 0;
+function vaultTimestamp(value){
+  if(typeof value==='string'){
+    try{
+      const parsed=JSON.parse(value);
+      return stateTime(parsed.clientUpdatedAt || parsed.updatedAt || '');
+    }catch(err){ return stateTime(value); }
   }
+  return 0;
 }
 
 async function enableCloudNotifications(){
@@ -1736,7 +1632,7 @@ function renderCloudUi(){
   const email=$('#cloudUserEmail');
   const avatar=$('#cloudAvatar');
   if(name) name.textContent=user ? (user.displayName || 'Conta Google') : 'Não conectado';
-  if(email) email.textContent=user ? (user.email || 'Conta sincronizada') : (configured?'Entre com Google para sincronizar.':'Firebase ainda não configurado.');
+  if(email) email.textContent=user ? (user.email || 'Conta sincronizada') : (configured?'Entre com Google para acessar seus dados.':'Firebase ainda não configurado.');
   if(avatar){
     avatar.textContent=user ? ((user.displayName || user.email || 'G').trim().charAt(0).toUpperCase()) : 'G';
     avatar.style.backgroundImage=user && user.photoURL ? 'url("'+String(user.photoURL).replace(/"/g,'')+'")' : '';
@@ -1748,14 +1644,321 @@ function renderCloudUi(){
   }else if(!ready){
     setCloudStatus('syncing','Inicializando Firebase…');
   }else if(!user){
-    setCloudStatus('local','Cofre local · entre com Google para sincronizar');
+    setCloudStatus('local','Entre com Google para acessar o Stop Gastos');
   }else if(!navigator.onLine){
-    setCloudStatus('offline','Offline · alterações ficam no cache e serão sincronizadas');
+    setCloudStatus('offline','Offline · dados ficam salvos localmente');
   }else if(cloudLastSyncedAt){
     setCloudStatus('synced','Última sincronização '+cloudLastSyncedAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
   }else{
-    setCloudStatus('syncing','Conta conectada · verificando nuvem');
+    setCloudStatus('syncing','Conta conectada · carregando dados');
   }
+}
+
+
+function currentStateKey(){
+  return cloudUser ? STATE_KEY_PREFIX + cloudUser.uid : '';
+}
+
+function readLocalState(){
+  const key=currentStateKey();
+  if(!key) return null;
+  try{
+    const wrapper=JSON.parse(localStorage.getItem(key) || 'null');
+    if(!wrapper || !wrapper.state) return null;
+    return {state:normalizeState(wrapper.state),clientUpdatedAt:wrapper.clientUpdatedAt || ''};
+  }catch(err){
+    return null;
+  }
+}
+
+function writeLocalState(){
+  const key=currentStateKey();
+  if(!key || !appState) return;
+  localStorage.setItem(key,JSON.stringify({
+    app:'stop-gastos',
+    version:APP_VERSION,
+    clientUpdatedAt:localStateUpdatedAt || new Date().toISOString(),
+    state:appState
+  }));
+}
+
+function stateTime(value){
+  const time=Date.parse(value || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function applyBestState(local,remote){
+  const localTime=local ? stateTime(local.clientUpdatedAt) : 0;
+  const remoteTime=remote ? stateTime(remote.clientUpdatedAt) : 0;
+
+  if(remote && remote.state && remoteTime>localTime){
+    appState=normalizeState(remote.state);
+    localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+    writeLocalState();
+    return 'remote';
+  }
+  if(local && local.state){
+    appState=normalizeState(local.state);
+    localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
+    return 'local';
+  }
+  if(remote && remote.state){
+    appState=normalizeState(remote.state);
+    localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+    writeLocalState();
+    return 'remote';
+  }
+  return 'empty';
+}
+
+async function reconcileCloudState(remote){
+  if(!remote || !remote.state || !cloudUser) return;
+  const remoteTime=stateTime(remote.clientUpdatedAt);
+  const localTime=stateTime(localStateUpdatedAt);
+  if(remoteTime<=localTime) return;
+
+  appState=normalizeState(remote.state);
+  localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+  writeLocalState();
+  renderAll();
+
+  if(familyStates) familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt:localStateUpdatedAt};
+  renderFamily();
+
+  if(!remote.hasPendingWrites) toast('Alterações de outro dispositivo foram atualizadas.','info');
+}
+
+async function tryMigrateLegacyState(){
+  const vaultText=localStorage.getItem(VAULT_KEY);
+  if(!vaultText) return null;
+  try{
+    const encoded=sessionStorage.getItem(SESSION_KEY_STORAGE) || localStorage.getItem(REFRESH_KEY_STORAGE);
+    if(!encoded) return null;
+    const raw=fromB64(encoded);
+    const key=await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},true,['encrypt','decrypt']);
+    const vault=JSON.parse(vaultText);
+    const data=await decryptVaultWithKey(vault,key);
+    return normalizeState(data);
+  }catch(err){
+    return null;
+  }
+}
+
+function showSignedOutScreen(){
+  $('#appShell').hidden=true;
+  $('#lockScreen').hidden=false;
+  setCloudStatus('local','Entre com Google para continuar');
+}
+
+function clearFamilyWatchers(){
+  familyStateUnsubs.forEach(function(unsub){try{unsub();}catch(err){}});
+  familyStateUnsubs=[];
+}
+
+async function refreshFamilyData(){
+  const cloud=window.StopGastosCloud;
+  if(!cloudUser || !cloud || !cloud.ready) return;
+
+  try{
+    const result=await cloud.getFamilyStates();
+    familyContext=result.context || null;
+    familyStates=result.states || {};
+    if(appState) familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt:localStateUpdatedAt};
+
+    clearFamilyWatchers();
+    if(familyContext?.profile?.role==='admin'){
+      (familyContext.members || []).forEach(function(member){
+        if(member.uid===cloudUser.uid) return;
+        try{
+          const unsub=cloud.watchState(function(remote){
+            familyStates[member.uid]=remote;
+            renderFamily();
+          },member.uid);
+          familyStateUnsubs.push(unsub);
+        }catch(err){}
+      });
+    }
+    renderFamily();
+  }catch(err){
+    familyContext=null;
+    familyStates={};
+    renderFamily();
+  }
+}
+
+function bindFamilyEvents(){
+  $('#createFamilyBtn').addEventListener('click',createFamilyFromUi);
+  $('#joinFamilyBtn').addEventListener('click',joinFamilyFromUi);
+  $('#generateInviteBtn').addEventListener('click',generateFamilyInvite);
+  $('#copyInviteBtn').addEventListener('click',copyFamilyInvite);
+  $('#refreshFamilyBtn').addEventListener('click',async function(){
+    await refreshFamilyData();
+    toast('Dados da família atualizados.','success');
+  });
+  $('#leaveFamilyBtn').addEventListener('click',leaveFamilyFromUi);
+  $('#familyMembersList').addEventListener('click',async function(e){
+    const btn=e.target.closest('[data-remove-member]');
+    if(!btn) return;
+    await removeFamilyMemberFromUi(btn.getAttribute('data-remove-member'));
+  });
+}
+
+async function createFamilyFromUi(){
+  const cloud=window.StopGastosCloud;
+  const name=$('#familyNameInput').value.trim();
+  try{
+    await cloud.createFamily(name);
+    $('#familyNameInput').value='';
+    await refreshFamilyData();
+    toast('Família criada. Você é o administrador.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível criar a família.','error');
+  }
+}
+
+async function joinFamilyFromUi(){
+  const cloud=window.StopGastosCloud;
+  const code=$('#familyInviteInput').value.trim().toUpperCase();
+  try{
+    await cloud.acceptFamilyInvite(code);
+    $('#familyInviteInput').value='';
+    await refreshFamilyData();
+    toast('Você entrou na família.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível aceitar o convite.','error');
+  }
+}
+
+async function generateFamilyInvite(){
+  const cloud=window.StopGastosCloud;
+  try{
+    const code=await cloud.createFamilyInvite();
+    $('#familyInviteCode').textContent=code;
+    toast('Código de convite gerado.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível gerar o convite.','error');
+  }
+}
+
+async function copyFamilyInvite(){
+  const code=$('#familyInviteCode').textContent.trim();
+  if(!code || code==='—') return toast('Gere um código primeiro.','info');
+  try{
+    await navigator.clipboard.writeText(code);
+    toast('Código copiado.','success');
+  }catch(err){
+    toast('Código: '+code,'info');
+  }
+}
+
+async function removeFamilyMemberFromUi(uid){
+  const member=(familyContext?.members || []).find(m=>m.uid===uid);
+  const ok=await confirmDialog('Remover membro?',(member?.displayName || member?.email || 'Este membro')+' deixará de fazer parte da família.');
+  if(!ok) return;
+  try{
+    await window.StopGastosCloud.removeFamilyMember(uid);
+    await refreshFamilyData();
+    toast('Membro removido.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível remover o membro.','error');
+  }
+}
+
+async function leaveFamilyFromUi(){
+  if(!familyContext?.family) return;
+  const isOwner=familyContext.family.ownerUid===cloudUser?.uid;
+  if(isOwner) return toast('O proprietário da família não pode sair antes de transferir a administração.','info');
+  const ok=await confirmDialog('Sair da família?','Seus dados pessoais continuam na sua conta, mas deixam de aparecer para o administrador da família.');
+  if(!ok) return;
+  try{
+    await window.StopGastosCloud.leaveFamily();
+    await refreshFamilyData();
+    toast('Você saiu da família.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível sair da família.','error');
+  }
+}
+
+function renderFamily(){
+  const onboarding=$('#familyOnboarding');
+  const dashboard=$('#familyDashboard');
+  if(!onboarding || !dashboard) return;
+
+  const context=familyContext;
+  const hasFamily=!!(context && context.family);
+  onboarding.hidden=hasFamily;
+  dashboard.hidden=!hasFamily;
+
+  if(!hasFamily){
+    $('#familyTitle').textContent='Sua família financeira';
+    $('#familySubtitle').textContent='Crie uma família ou entre com um código de convite.';
+    $('#familyRoleBadge').textContent='Sem família';
+    return;
+  }
+
+  const isAdmin=context.profile?.role==='admin';
+  $('#familyTitle').textContent=context.family.name || 'Família';
+  $('#familySubtitle').textContent=isAdmin
+    ? 'Você pode acompanhar os lançamentos financeiros de todos os membros.'
+    : 'Registre seus gastos normalmente. O administrador verá o consolidado da família.';
+  $('#familyRoleBadge').textContent=isAdmin?'Administrador':'Membro';
+
+  const members=context.members || [];
+  $('#familyMemberCount').textContent=String(members.length);
+  $('#familyInvitePanel').hidden=!isAdmin;
+  $('#familyAdminFinancePanel').hidden=!isAdmin;
+  $('#leaveFamilyBtn').hidden=context.family.ownerUid===cloudUser?.uid;
+
+  const month=selectedMonth;
+  let totalExpense=0,totalIncome=0;
+  const memberTotals=[];
+  const recent=[];
+
+  members.forEach(function(member){
+    const entry=familyStates[member.uid];
+    const state=entry && entry.state ? entry.state : null;
+    const tx=state && Array.isArray(state.transactions) ? state.transactions.filter(t=>String(t.date||'').slice(0,7)===month) : [];
+    const expense=tx.filter(t=>t.type==='expense').reduce((a,t)=>a+Number(t.amount||0),0);
+    const income=tx.filter(t=>t.type==='income').reduce((a,t)=>a+Number(t.amount||0),0);
+    totalExpense+=expense;
+    totalIncome+=income;
+    memberTotals.push({member,expense,income});
+    tx.forEach(function(t){recent.push({member,t});});
+  });
+
+  $('#familyExpenseTotal').textContent=money(totalExpense);
+  $('#familyIncomeTotal').textContent=money(totalIncome);
+  $('#familyBalanceTotal').textContent=money(totalIncome-totalExpense);
+
+  $('#familyMembersList').innerHTML=members.map(function(member){
+    const isSelf=member.uid===cloudUser?.uid;
+    const canRemove=isAdmin && !isSelf && member.uid!==context.family.ownerUid;
+    const initial=(member.displayName || member.email || '?').trim().charAt(0).toUpperCase();
+    return '<div class="family-member-row">'+
+      '<div class="family-mini-avatar">'+escapeHtml(initial)+'</div>'+
+      '<div class="family-member-info"><b>'+escapeHtml(member.displayName || member.email || 'Membro')+'</b>'+
+      '<small>'+escapeHtml(member.email || '')+' · '+(member.role==='admin'?'Admin':'Membro')+(isSelf?' · você':'')+'</small></div>'+
+      (canRemove?'<button class="icon-btn" data-remove-member="'+escapeHtml(member.uid)+'" title="Remover membro">×</button>':'')+
+    '</div>';
+  }).join('');
+
+  if(isAdmin){
+    $('#familyMemberTotals').innerHTML=memberTotals.sort((a,b)=>b.expense-a.expense).map(function(item){
+      const pct=totalExpense>0 ? Math.round(item.expense/totalExpense*100) : 0;
+      return '<div class="family-total-row"><div><b>'+escapeHtml(item.member.displayName || item.member.email || 'Membro')+'</b><small>'+pct+'% dos gastos do mês</small></div><strong>'+money(item.expense)+'</strong></div>';
+    }).join('') || '<div class="empty-state">Sem gastos familiares neste mês.</div>';
+
+    recent.sort((a,b)=>String(b.t.date||'').localeCompare(String(a.t.date||'')));
+    $('#familyRecentTransactions').innerHTML=recent.slice(0,40).map(function(item){
+      return '<tr><td>'+formatDate(item.t.date)+'</td><td>'+escapeHtml(item.member.displayName || item.member.email || 'Membro')+'</td><td>'+escapeHtml(item.t.description || '')+'</td><td>'+escapeHtml(getCategoryFromState(item.t.category,item.member.uid).name)+'</td><td class="right '+(item.t.type==='expense'?'expense-text':'income-text')+'">'+(item.t.type==='expense'?'- ':'+ ')+money(item.t.amount)+'</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="empty-cell">Nenhum lançamento da família neste mês.</td></tr>';
+  }
+}
+
+function getCategoryFromState(id,uid){
+  const state=familyStates[uid]?.state;
+  const categories=state && Array.isArray(state.categories) ? state.categories : [];
+  return categories.find(c=>c.id===id) || getCategory(id);
 }
 
 

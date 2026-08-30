@@ -137,7 +137,7 @@ service cloud.firestore {
             && (
               (
                 resource.data.status == 'pending'
-                && request.resource.data.status in ['active', 'inactive']
+                && request.resource.data.status in ['active', 'declined']
               )
               ||
               (

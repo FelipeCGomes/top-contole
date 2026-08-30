@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="Stop Gastos — gestão financeira pessoal, orçamento, metas e relatórios." />
+  <title>Stop Gastos</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="lockScreen" class="lock-screen">
+    <div class="lock-visual" aria-hidden="true">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="orb orb-c"></div>
+    </div>
+    <section class="lock-card glass">
+      <div class="brand-lock">
+        <img src="favicon.svg" alt="" width="52" height="52" />
+        <div>
+          <strong>Stop Gastos</strong>
+          <span>Seu dinheiro, sob controle.</span>
+        </div>
+      </div>
+      <div id="setupBox" hidden>
+        <p class="eyebrow">PRIMEIRO ACESSO</p>
+        <h1>Crie seu cofre financeiro</h1>
+        <p class="muted">Defina um PIN com no mínimo 4 caracteres. Seus dados serão criptografados no navegador com AES-GCM.</p>
+        <form id="setupForm" class="stack-form">
+          <label>PIN
+            <input id="setupPin" type="password" minlength="4" autocomplete="new-password" required placeholder="Crie um PIN" />
+          </label>
+          <label>Confirmar PIN
+            <input id="setupPinConfirm" type="password" minlength="4" autocomplete="new-password" required placeholder="Repita o PIN" />
+          </label>
+          <button class="btn primary wide" type="submit">Criar cofre</button>
+        </form>
+      </div>
+      <div id="unlockBox" hidden>
+        <p class="eyebrow">COFRE PROTEGIDO</p>
+        <h1>Bem-vindo de volta</h1>
+        <p class="muted">Digite seu PIN para descriptografar seus dados neste dispositivo.</p>
+        <form id="unlockForm" class="stack-form">
+          <label>PIN
+            <input id="unlockPin" type="password" autocomplete="current-password" required placeholder="Seu PIN" />
+          </label>
+          <button class="btn primary wide" type="submit">Desbloquear</button>
+        </form>
+      </div>
+      <div class="lock-note">🔒 Seus dados financeiros não são enviados para o GitHub.</div>
+    </section>
+  </div>
+
+  <div id="appShell" class="app-shell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#dashboard" data-nav="dashboard" aria-label="Ir para o dashboard">
+        <img src="favicon.svg" alt="" width="40" height="40" />
+        <span><strong>Stop</strong> Gastos</span>
+      </a>
+
+      <nav class="side-nav" aria-label="Navegação principal">
+        <button class="nav-item active" data-nav="dashboard"><span>◫</span><b>Dashboard</b></button>
+        <button class="nav-item" data-nav="transactions"><span>↕</span><b>Lançamentos</b></button>
+        <button class="nav-item" data-nav="recurring"><span>↻</span><b>Custos fixos</b></button>
+        <button class="nav-item" data-nav="budgets"><span>◎</span><b>Orçamentos</b></button>
+        <button class="nav-item" data-nav="goals"><span>⚑</span><b>Metas</b></button>
+        <button class="nav-item" data-nav="calendar"><span>▦</span><b>Calendário</b></button>
+        <button class="nav-item" data-nav="reports"><span>⌁</span><b>Relatórios</b></button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <button class="nav-item" data-nav="settings"><span>⚙</span><b>Configurações</b></button>
+        <div class="security-badge"><span class="pulse-dot"></span><div><b>Cofre protegido</b><small>AES-GCM local</small></div></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="menuBtn" class="icon-btn menu-btn" aria-label="Abrir menu">☰</button>
+          <div>
+            <h2 id="pageTitle">Dashboard</h2>
+            <p id="pageSubtitle">Visão geral das suas finanças</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <label class="month-picker-wrap">
+            <span>Período</span>
+            <input id="globalMonth" type="month" />
+          </label>
+          <button id="themeBtn" class="icon-btn" aria-label="Alternar tema">☾</button>
+          <button id="quickAddBtn" class="btn primary">＋ Novo lançamento</button>
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="hero-strip">
+          <div>
+            <span class="eyebrow">RESUMO DO MÊS</span>
+            <h1 id="dashboardGreeting">Seu mês financeiro</h1>
+            <p id="dashboardHint">Registre seus gastos e acompanhe o orçamento em tempo real.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="btn soft" data-open="recurring">＋ Custo fixo</button>
+            <button class="btn soft" data-nav="reports">Ver relatório</button>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card income">
+            <div class="kpi-head"><span class="kpi-icon">↗</span><small>Receitas</small></div>
+            <strong id="kpiIncome">R$ 0,00</strong>
+            <span id="kpiIncomeDelta" class="delta neutral">Sem comparação</span>
+          </article>
+          <article class="kpi-card expense">
+            <div class="kpi-head"><span class="kpi-icon">↘</span><small>Despesas</small></div>
+            <strong id="kpiExpense">R$ 0,00</strong>
+            <span id="kpiExpenseDelta" class="delta neutral">Sem comparação</span>
+          </article>
+          <article class="kpi-card balance">
+            <div class="kpi-head"><span class="kpi-icon">≈</span><small>Saldo</small></div>
+            <strong id="kpiBalance">R$ 0,00</strong>
+            <span id="kpiSavingsRate" class="delta neutral">Taxa de economia 0%</span>
+          </article>
+          <article class="kpi-card average">
+            <div class="kpi-head"><span class="kpi-icon">◷</span><small>Média diária</small></div>
+            <strong id="kpiDaily">R$ 0,00</strong>
+            <span id="kpiProjection" class="delta neutral">Projeção: R$ 0,00</span>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel span-2">
+            <div class="panel-head">
+              <div><span class="eyebrow">EVOLUÇÃO</span><h3>Gastos nos últimos 6 meses</h3></div>
+              <div class="legend-inline"><span><i class="legend-dot expense-dot"></i>Despesas</span><span><i class="legend-dot income-dot"></i>Receitas</span></div>
+            </div>
+            <div id="trendChart" class="trend-chart" aria-label="Gráfico de evolução mensal"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">ORÇAMENTO</span><h3>Limite mensal</h3></div>
+              <button class="mini-link" data-nav="budgets">Gerenciar</button>
+            </div>
+            <div class="budget-ring-wrap">
+              <div id="budgetRing" class="budget-ring"><div><strong id="budgetPct">0%</strong><span>utilizado</span></div></div>
+              <div class="budget-meta">
+                <div><span>Gasto</span><strong id="budgetSpent">R$ 0,00</strong></div>
+                <div><span>Limite</span><strong id="budgetLimit">R$ 0,00</strong></div>
+                <div><span>Disponível</span><strong id="budgetRemaining">R$ 0,00</strong></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">CATEGORIAS</span><h3>Para onde foi seu dinheiro</h3></div>
+              <button class="mini-link" data-nav="reports">Detalhes</button>
+            </div>
+            <div class="donut-wrap">
+              <div id="categoryDonut" class="donut"><div><strong id="donutTotal">R$ 0</strong><span>despesas</span></div></div>
+              <div id="categoryLegend" class="category-legend"></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">FIXOS</span><h3>Próximos vencimentos</h3></div>
+              <button class="mini-link" data-nav="recurring">Ver todos</button>
+            </div>
+            <div id="upcomingList" class="compact-list empty-state">Nenhum custo fixo cadastrado.</div>
+          </article>
+
+          <article class="panel span-2">
+            <div class="panel-head">
+              <div><span class="eyebrow">ÚLTIMOS LANÇAMENTOS</span><h3>Movimentações recentes</h3></div>
+              <button class="mini-link" data-nav="transactions">Ver todos</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Tipo</th><th class="right">Valor</th></tr></thead>
+                <tbody id="recentTransactions"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-transactions" class="view">
+        <div class="section-toolbar">
+          <div class="search-box">⌕<input id="transactionSearch" type="search" placeholder="Buscar por descrição ou categoria..." /></div>
+          <div class="filter-row">
+            <select id="transactionTypeFilter"><option value="all">Todos os tipos</option><option value="expense">Despesas</option><option value="income">Receitas</option></select>
+            <select id="transactionCategoryFilter"><option value="all">Todas as categorias</option></select>
+            <button class="btn primary" data-open="transaction">＋ Adicionar</button>
+          </div>
+        </div>
+        <div class="summary-chips">
+          <div><span>Entradas</span><strong id="transIncome">R$ 0,00</strong></div>
+          <div><span>Saídas</span><strong id="transExpense">R$ 0,00</strong></div>
+          <div><span>Saldo</span><strong id="transBalance">R$ 0,00</strong></div>
+          <div><span>Lançamentos</span><strong id="transCount">0</strong></div>
+        </div>
+        <article class="panel table-panel">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Pagamento</th><th>Tipo</th><th class="right">Valor</th><th></th></tr></thead>
+              <tbody id="transactionsTable"></tbody>
+            </table>
+          </div>
+          <div id="transactionsEmpty" class="empty-block" hidden><div>↕</div><h3>Nenhum lançamento encontrado</h3><p>Adicione sua primeira receita ou despesa para começar.</p></div>
+        </article>
+      </section>
+
+      <section id="view-recurring" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">AUTOMAÇÃO MENSAL</span><h3>Custos fixos e receitas recorrentes</h3><p class="muted">Itens ativos são lançados automaticamente a cada mês.</p></div>
+          <button class="btn primary" data-open="recurring">＋ Novo custo fixo</button>
+        </div>
+        <div id="recurringGrid" class="card-grid"></div>
+        <div id="recurringEmpty" class="empty-block panel" hidden><div>↻</div><h3>Nenhum item recorrente</h3><p>Cadastre aluguel, internet, assinaturas, salário e outras cobranças fixas.</p></div>
+      </section>
+
+      <section id="view-budgets" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">PLANEJAMENTO</span><h3>Orçamentos por categoria</h3><p class="muted">Defina quanto pretende gastar em cada área da sua vida.</p></div>
+          <button class="btn primary" data-open="budget">＋ Novo orçamento</button>
+        </div>
+        <article class="panel budget-overview">
+          <div class="budget-overview-text"><span>Orçamento geral do mês</span><strong id="budgetOverviewText">R$ 0 de R$ 0</strong><small id="budgetOverviewStatus">0% utilizado</small></div>
+          <div class="progress big"><i id="budgetOverviewBar"></i></div>
+        </article>
+        <div id="budgetGrid" class="card-grid"></div>
+      </section>
+
+      <section id="view-goals" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">OBJETIVOS</span><h3>Metas financeiras</h3><p class="muted">Acompanhe reservas, compras planejadas e objetivos de longo prazo.</p></div>
+          <button class="btn primary" data-open="goal">＋ Nova meta</button>
+        </div>
+        <div id="goalsGrid" class="goal-grid"></div>
+        <div id="goalsEmpty" class="empty-block panel" hidden><div>⚑</div><h3>Crie sua primeira meta</h3><p>Defina um objetivo, valor alvo e prazo para acompanhar seu progresso.</p></div>
+      </section>
+
+      <section id="view-calendar" class="view">
+        <div class="calendar-head">
+          <button id="prevCalendar" class="icon-btn">‹</button>
+          <div><span class="eyebrow">CALENDÁRIO FINANCEIRO</span><h3 id="calendarTitle">Mês</h3></div>
+          <button id="nextCalendar" class="icon-btn">›</button>
+        </div>
+        <article class="panel calendar-panel">
+          <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </article>
+      </section>
+
+      <section id="view-reports" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">ANÁLISE</span><h3>Relatório financeiro</h3><p class="muted">Indicadores para entender hábitos e tomar decisões melhores.</p></div>
+          <button id="exportCsvBtn" class="btn soft">↓ Exportar CSV</button>
+        </div>
+        <div id="insightGrid" class="insight-grid"></div>
+        <div class="dashboard-grid reports-grid">
+          <article class="panel span-2">
+            <div class="panel-head"><div><span class="eyebrow">ANO</span><h3>Receitas x despesas por mês</h3></div></div>
+            <div class="table-wrap">
+              <table><thead><tr><th>Mês</th><th class="right">Receitas</th><th class="right">Despesas</th><th class="right">Saldo</th><th>Economia</th></tr></thead><tbody id="annualReportTable"></tbody></table>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><span class="eyebrow">RANKING</span><h3>Maiores categorias</h3></div></div>
+            <div id="rankingList" class="ranking-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="settings-grid">
+          <article class="panel settings-card">
+            <div><span class="settings-icon">◐</span><div><h3>Aparência</h3><p class="muted">Escolha o tema do Stop Gastos.</p></div></div>
+            <select id="themeSelect"><option value="system">Seguir sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">◎</span><div><h3>Limite mensal geral</h3><p class="muted">Usado no indicador principal do dashboard.</p></div></div>
+            <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" /></div>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">⌛</span><div><h3>Bloqueio automático</h3><p class="muted">Bloqueia o cofre após inatividade.</p></div></div>
+            <select id="autoLockSelect"><option value="5">5 minutos</option><option value="10">10 minutos</option><option value="30">30 minutos</option><option value="60">1 hora</option><option value="0">Desativado</option></select>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">⬇</span><div><h3>Backup criptografado</h3><p class="muted">Baixe seus dados em um arquivo JSON protegido pelo seu PIN.</p></div></div>
+            <button id="backupBtn" class="btn soft">Exportar backup</button>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">⬆</span><div><h3>Restaurar backup</h3><p class="muted">Importe um JSON criptografado de outro dispositivo.</p></div></div>
+            <label class="btn soft file-btn">Importar JSON<input id="restoreInput" type="file" accept=".json,application/json" /></label>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">🔒</span><div><h3>Bloquear agora</h3><p class="muted">Encerra a sessão e remove a chave da memória.</p></div></div>
+            <button id="lockBtn" class="btn soft">Bloquear cofre</button>
+          </article>
+          <article class="panel settings-card">
+            <div><span class="settings-icon">✦</span><div><h3>Dados de demonstração</h3><p class="muted">Carrega exemplos para explorar todas as telas.</p></div></div>
+            <button id="demoBtn" class="btn soft">Carregar demonstração</button>
+          </article>
+          <article class="panel settings-card danger-zone">
+            <div><span class="settings-icon">!</span><div><h3>Apagar dados</h3><p class="muted">Remove permanentemente o cofre deste dispositivo.</p></div></div>
+            <button id="wipeBtn" class="btn danger">Apagar tudo</button>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <nav class="mobile-nav">
+      <button class="active" data-nav="dashboard"><span>◫</span><small>Início</small></button>
+      <button data-nav="transactions"><span>↕</span><small>Gastos</small></button>
+      <button class="mobile-add" data-open="transaction">＋</button>
+      <button data-nav="budgets"><span>◎</span><small>Orçamento</small></button>
+      <button data-nav="reports"><span>⌁</span><small>Relatórios</small></button>
+    </nav>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div><span id="modalEyebrow" class="eyebrow">NOVO</span><h3 id="modalTitle">Novo lançamento</h3></div>
+        <button id="modalClose" class="icon-btn">×</button>
+      </div>
+
+      <form id="transactionForm" class="modal-form" hidden>
+        <input id="transactionId" type="hidden" />
+        <div class="type-switch">
+          <label><input type="radio" name="txType" value="expense" checked /><span>Despesa</span></label>
+          <label><input type="radio" name="txType" value="income" /><span>Receita</span></label>
+        </div>
+        <label class="field span-2">Descrição<input id="txDescription" required maxlength="80" placeholder="Ex.: Supermercado" /></label>
+        <label class="field">Valor<input id="txAmount" required type="number" min="0.01" step="0.01" placeholder="0,00" /></label>
+        <label class="field">Data<input id="txDate" required type="date" /></label>
+        <label class="field">Categoria<select id="txCategory" required></select></label>
+        <label class="field">Pagamento<select id="txPayment"><option>Pix</option><option>Cartão de crédito</option><option>Cartão de débito</option><option>Dinheiro</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label class="field span-2">Observação<textarea id="txNotes" rows="3" maxlength="240" placeholder="Opcional"></textarea></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar lançamento</button></div>
+      </form>
+
+      <form id="recurringForm" class="modal-form" hidden>
+        <input id="recurringId" type="hidden" />
+        <div class="type-switch span-2">
+          <label><input type="radio" name="recType" value="expense" checked /><span>Despesa fixa</span></label>
+          <label><input type="radio" name="recType" value="income" /><span>Receita fixa</span></label>
+        </div>
+        <label class="field span-2">Descrição<input id="recDescription" required maxlength="80" placeholder="Ex.: Internet" /></label>
+        <label class="field">Valor<input id="recAmount" required type="number" min="0.01" step="0.01" /></label>
+        <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
+        <label class="field">Categoria<select id="recCategory" required></select></label>
+        <label class="field">Pagamento<select id="recPayment"><option>Débito automático</option><option>Pix</option><option>Cartão de crédito</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label class="check-row span-2"><input id="recActive" type="checkbox" checked /> Ativo e gerar automaticamente</label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar recorrência</button></div>
+      </form>
+
+      <form id="budgetForm" class="modal-form" hidden>
+        <input id="budgetId" type="hidden" />
+        <label class="field span-2">Categoria<select id="budgetCategory" required></select></label>
+        <label class="field span-2">Limite mensal<input id="budgetAmount" required type="number" min="1" step="0.01" /></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar orçamento</button></div>
+      </form>
+
+      <form id="goalForm" class="modal-form" hidden>
+        <input id="goalId" type="hidden" />
+        <label class="field span-2">Nome da meta<input id="goalName" required maxlength="80" placeholder="Ex.: Reserva de emergência" /></label>
+        <label class="field">Valor alvo<input id="goalTarget" required type="number" min="1" step="0.01" /></label>
+        <label class="field">Valor atual<input id="goalCurrent" required type="number" min="0" step="0.01" /></label>
+        <label class="field">Prazo<input id="goalDeadline" type="date" /></label>
+        <label class="field">Ícone<select id="goalIcon"><option>🎯</option><option>🛟</option><option>✈️</option><option>🏠</option><option>🚗</option><option>💻</option><option>📚</option><option>💰</option></select></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar meta</button></div>
+      </form>
+
+      <form id="backupPinForm" class="modal-form" hidden>
+        <p class="muted span-2">Digite o PIN usado no arquivo de backup para descriptografá-lo.</p>
+        <label class="field span-2">PIN do backup<input id="backupImportPin" type="password" required /></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Restaurar backup</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="confirmBackdrop" class="modal-backdrop" hidden>
+    <div class="confirm-box">
+      <div class="confirm-icon">!</div>
+      <h3 id="confirmTitle">Confirmar ação</h3>
+      <p id="confirmMessage">Tem certeza?</p>
+      <div class="modal-actions"><button id="confirmCancel" class="btn soft">Cancelar</button><button id="confirmOk" class="btn danger">Confirmar</button></div>
+    </div>
+  </div>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

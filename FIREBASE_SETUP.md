@@ -32,7 +32,7 @@ Isso é obrigatório para o fluxo familiar por e-mail funcionar.
 As regras implementam:
 - estado financeiro individual por UID;
 - leitura familiar apenas para administrador;
-- vínculo familiar com status `pending`, `active` e `inactive`;
+- vínculo familiar com status `pending`, `active` e `declined`;
 - convite direcionado ao UID do destinatário;
 - diretório de e-mails sem permissão de listagem;
 - bloqueio de todos os caminhos não autorizados.
@@ -78,11 +78,11 @@ Aceitar:
 - administrador passa a visualizar o estado financeiro do membro.
 
 Recusar:
-- vínculo -> `inactive`;
+- vínculo -> `declined`;
 - o usuário não entra na família;
 - a conta Google permanece normal e ativa.
 
-O admin pode reenviar um convite posteriormente para um vínculo inativo.
+O admin pode reenviar um convite posteriormente para um vínculo recusado.
 
 ## 5. Notificações
 

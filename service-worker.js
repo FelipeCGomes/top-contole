@@ -1,4 +1,4 @@
-const CACHE = 'stop-gastos-v1';
+const CACHE = 'stop-gastos-v2';
 const CORE = ['./', './index.html', './styles.css', './app.js', './defaults.json', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', event => {

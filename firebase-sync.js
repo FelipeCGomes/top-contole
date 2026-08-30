@@ -327,7 +327,11 @@ async function sendFamilyInviteByEmail(email){
     role:'member',
     status:'pending',
     invitedBy:currentUser.uid,
+    invitedByName:currentUser.displayName || '',
     invitedAt:serverTimestamp(),
+    responseAt:null,
+    declinedAt:null,
+    acceptedAt:null,
     updatedAt:serverTimestamp()
   },{merge:true});
 
@@ -344,10 +348,11 @@ async function sendFamilyInviteByEmail(email){
     status:'pending',
     expiresAt,
     createdAt:serverTimestamp(),
+    respondedAt:null,
     updatedAt:serverTimestamp()
   });
 
-  return {requestId,target};
+  return {requestId,target,status:'pending'};
 }
 
 async function getFamilyInvitations(){
@@ -390,7 +395,9 @@ async function respondFamilyInvitation(requestId,accept){
   if(invitation.targetUid!==currentUser.uid) throw new Error('Este convite pertence a outra conta.');
   if(invitation.status!=='pending') throw new Error('Este convite já foi respondido.');
 
-  const expiry=invitation.expiresAt && typeof invitation.expiresAt.toDate==='function' ? invitation.expiresAt.toDate() : new Date(invitation.expiresAt || 0);
+  const expiry=invitation.expiresAt && typeof invitation.expiresAt.toDate==='function'
+    ? invitation.expiresAt.toDate()
+    : new Date(invitation.expiresAt || 0);
   if(expiry && expiry.getTime()<=Date.now()) throw new Error('Este convite expirou.');
 
   const memberRef=doc(db,'families',invitation.familyId,'members',currentUser.uid);
@@ -407,13 +414,18 @@ async function respondFamilyInvitation(requestId,accept){
       role:'member',
       status:'active',
       joinedAt:serverTimestamp(),
+      acceptedAt:serverTimestamp(),
+      responseAt:serverTimestamp(),
+      declinedAt:null,
       updatedAt:serverTimestamp()
     },{merge:true});
+
     await setDoc(profileRef(),{
       familyId:invitation.familyId,
       role:'member',
       updatedAt:serverTimestamp()
     },{merge:true});
+
     await setDoc(requestRef,{
       status:'accepted',
       respondedAt:serverTimestamp(),
@@ -421,10 +433,18 @@ async function respondFamilyInvitation(requestId,accept){
     },{merge:true});
   }else{
     await setDoc(memberRef,{
-      status:'inactive',
+      uid:currentUser.uid,
+      displayName:currentUser.displayName || '',
+      email:normalizeEmail(currentUser.email),
+      photoURL:currentUser.photoURL || '',
+      role:'member',
+      status:'declined',
+      responseAt:serverTimestamp(),
       declinedAt:serverTimestamp(),
+      acceptedAt:null,
       updatedAt:serverTimestamp()
     },{merge:true});
+
     await setDoc(requestRef,{
       status:'declined',
       respondedAt:serverTimestamp(),
@@ -432,9 +452,13 @@ async function respondFamilyInvitation(requestId,accept){
     },{merge:true});
   }
 
-  return {accepted:!!accept,familyId:invitation.familyId};
+  return {
+    accepted:!!accept,
+    status:accept?'accepted':'declined',
+    familyId:invitation.familyId,
+    targetEmail:invitation.targetEmail || normalizeEmail(currentUser.email)
+  };
 }
-
 
 async function getFamilyContext(){
   requireUser();

@@ -11,6 +11,23 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-7h6v7"/></symbol>
+    <symbol id="i-transactions" viewBox="0 0 24 24"><path d="M7 3v15"/><path d="m3 14 4 4 4-4"/><path d="M17 21V6"/><path d="m13 10 4-4 4 4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M15.5 14.5a4.5 4.5 0 0 1 5 4.5"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H19v16H6.5A2.5 2.5 0 0 1 4 17.5z"/><path d="M4 8h15"/><path d="M15 12h6v4h-6a2 2 0 0 1 0-4Z"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></symbol>
+    <symbol id="i-bill" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1L7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.8-2.6L20 11M4 13l2.1 4.6A7 7 0 0 0 17.9 15"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M18 8v6M15 11h6"/></symbol>
+  </svg>
   <div id="lockScreen" class="lock-screen">
     <div class="lock-visual" aria-hidden="true">
       <div class="orb orb-a"></div>
@@ -44,21 +61,21 @@
       </a>
 
       <nav class="side-nav" aria-label="Navegação principal">
-        <button class="nav-item active" data-nav="dashboard"><span>◫</span><b>Dashboard</b></button>
-        <button class="nav-item" data-nav="transactions"><span>↕</span><b>Lançamentos</b></button>
-        <button class="nav-item" data-nav="family"><span>♧</span><b>Família</b></button>
-        <button class="nav-item" data-nav="accounts"><span>◉</span><b>Contas</b></button>
-        <button class="nav-item" data-nav="cards"><span>▣</span><b>Cartões</b></button>
-        <button class="nav-item" data-nav="bills"><span>✓</span><b>Contas a pagar</b></button>
-        <button class="nav-item" data-nav="recurring"><span>↻</span><b>Custos fixos</b></button>
-        <button class="nav-item" data-nav="budgets"><span>◎</span><b>Orçamentos</b></button>
-        <button class="nav-item" data-nav="goals"><span>⚑</span><b>Metas</b></button>
-        <button class="nav-item" data-nav="calendar"><span>▦</span><b>Calendário</b></button>
-        <button class="nav-item" data-nav="reports"><span>⌁</span><b>Relatórios</b></button>
+        <button class="nav-item active" data-nav="dashboard"><svg class="nav-icon"><use href="#i-home"/></svg><b>Dashboard</b></button>
+        <button class="nav-item" data-nav="transactions"><svg class="nav-icon"><use href="#i-transactions"/></svg><b>Lançamentos</b></button>
+        <button class="nav-item" data-nav="family"><svg class="nav-icon"><use href="#i-users"/></svg><b>Família</b></button>
+        <button class="nav-item" data-nav="accounts"><svg class="nav-icon"><use href="#i-wallet"/></svg><b>Contas</b></button>
+        <button class="nav-item" data-nav="cards"><svg class="nav-icon"><use href="#i-card"/></svg><b>Cartões</b></button>
+        <button class="nav-item" data-nav="bills"><svg class="nav-icon"><use href="#i-bill"/></svg><b>Contas a pagar</b></button>
+        <button class="nav-item" data-nav="recurring"><svg class="nav-icon"><use href="#i-repeat"/></svg><b>Custos fixos</b></button>
+        <button class="nav-item" data-nav="budgets"><svg class="nav-icon"><use href="#i-target"/></svg><b>Orçamentos</b></button>
+        <button class="nav-item" data-nav="goals"><svg class="nav-icon"><use href="#i-target"/></svg><b>Metas</b></button>
+        <button class="nav-item" data-nav="calendar"><svg class="nav-icon"><use href="#i-calendar"/></svg><b>Calendário</b></button>
+        <button class="nav-item" data-nav="reports"><svg class="nav-icon"><use href="#i-chart"/></svg><b>Relatórios</b></button>
       </nav>
 
       <div class="sidebar-bottom">
-        <button class="nav-item" data-nav="settings"><span>⚙</span><b>Configurações</b></button>
+        <button class="nav-item" data-nav="settings"><svg class="nav-icon"><use href="#i-settings"/></svg><b>Configurações</b></button>
         <div class="security-badge"><span class="pulse-dot"></span><div><b>Conta protegida</b><small>Google + Firebase</small></div></div>
       </div>
     </aside>
@@ -80,6 +97,9 @@
           <button id="cloudStatusBtn" class="cloud-status-btn" type="button" title="Sincronização">
             <span id="cloudStatusDot" class="sync-dot"></span>
             <span id="cloudStatusText">Local</span>
+          </button>
+          <button id="notificationsBtn" class="icon-btn notification-btn" type="button" aria-label="Notificações da família" title="Notificações">
+            <svg class="top-icon"><use href="#i-bell"/></svg><span id="notificationBadge" class="notification-badge" hidden>0</span>
           </button>
           <button id="privacyBtn" class="icon-btn" aria-label="Ocultar valores" title="Modo privacidade">👁</button>
           <button id="themeBtn" class="icon-btn" aria-label="Alternar tema">☾</button>
@@ -331,64 +351,79 @@
 
       <section id="view-family" class="view">
         <div class="family-hero panel">
-          <div>
+          <div class="family-hero-copy">
             <span class="eyebrow">CONTA FAMÍLIA</span>
             <h2 id="familyTitle">Sua família financeira</h2>
-            <p id="familySubtitle" class="muted">Crie uma família ou entre com um código de convite.</p>
+            <p id="familySubtitle" class="muted">Crie uma família ou aguarde um convite enviado ao seu Gmail de acesso.</p>
           </div>
           <div id="familyRoleBadge" class="family-role-badge">Sem família</div>
         </div>
 
+        <article id="familyNotificationsPanel" class="panel family-notifications" hidden>
+          <div class="panel-head">
+            <div><span class="eyebrow">CONVITES</span><h3>Solicitações para participar de uma família</h3></div>
+            <span id="familyNotificationCount" class="status-pill">0 pendentes</span>
+          </div>
+          <div id="familyNotificationsList" class="family-notification-list"></div>
+        </article>
+
         <div id="familyOnboarding" class="family-onboarding">
           <article class="panel family-action-card">
-            <span class="settings-icon">⌂</span>
-            <div><h3>Criar uma família</h3><p class="muted">Você será o administrador e poderá acompanhar os gastos de todos os membros.</p></div>
+            <div class="family-card-icon"><svg><use href="#i-users"/></svg></div>
+            <div><h3>Criar uma família</h3><p class="muted">Você será o administrador e poderá convidar membros pelo e-mail da conta Google cadastrada.</p></div>
             <label class="field">Nome da família<input id="familyNameInput" maxlength="60" placeholder="Ex.: Família Gomes" /></label>
-            <button id="createFamilyBtn" class="btn primary" type="button">Criar família</button>
+            <button id="createFamilyBtn" class="btn primary" type="button"><svg class="btn-icon"><use href="#i-plus"/></svg>Criar família</button>
           </article>
-          <article class="panel family-action-card">
-            <span class="settings-icon">＋</span>
-            <div><h3>Entrar em uma família</h3><p class="muted">Peça ao administrador o código de convite.</p></div>
-            <label class="field">Código do convite<input id="familyInviteInput" maxlength="16" placeholder="Ex.: A7K9M2Q4" /></label>
-            <button id="joinFamilyBtn" class="btn soft" type="button">Entrar com código</button>
+          <article class="panel family-action-card family-info-card">
+            <div class="family-card-icon soft"><svg><use href="#i-bell"/></svg></div>
+            <div>
+              <h3>Como entrar em uma família</h3>
+              <p class="muted">Entre pelo menos uma vez no Stop Gastos com sua conta Google. O administrador informa o mesmo e-mail e você recebe uma solicitação aqui.</p>
+            </div>
+            <div class="family-flow">
+              <span>1. Entrar com Google</span><i>→</i><span>2. Receber convite</span><i>→</i><span>3. Aceitar ou recusar</span>
+            </div>
           </article>
         </div>
 
         <div id="familyDashboard" hidden>
           <div class="family-kpis">
-            <article class="kpi-card"><small>Membros</small><strong id="familyMemberCount">0</strong></article>
+            <article class="kpi-card"><small>Membros ativos</small><strong id="familyMemberCount">0</strong></article>
             <article class="kpi-card expense"><small>Gastos da família no mês</small><strong id="familyExpenseTotal">R$ 0,00</strong></article>
             <article class="kpi-card income"><small>Receitas da família no mês</small><strong id="familyIncomeTotal">R$ 0,00</strong></article>
             <article class="kpi-card balance"><small>Saldo consolidado</small><strong id="familyBalanceTotal">R$ 0,00</strong></article>
           </div>
 
-          <div class="content-grid two-col">
+          <div class="family-main-grid">
             <article class="panel">
               <div class="panel-head">
-                <div><span class="eyebrow">MEMBROS</span><h3>Quem participa</h3></div>
-                <button id="refreshFamilyBtn" class="btn soft" type="button">↻ Atualizar</button>
+                <div><span class="eyebrow">MEMBROS</span><h3>Pessoas vinculadas</h3></div>
+                <button id="refreshFamilyBtn" class="icon-btn compact" type="button" title="Atualizar"><svg class="top-icon"><use href="#i-refresh"/></svg></button>
               </div>
               <div id="familyMembersList" class="family-members-list"></div>
             </article>
 
-            <article id="familyInvitePanel" class="panel">
-              <div class="panel-head"><div><span class="eyebrow">ADMIN</span><h3>Convidar membro</h3></div></div>
-              <p class="muted">Gere um código e envie para a pessoa. Ela entra com a própria conta Google.</p>
-              <div class="invite-code-box">
-                <strong id="familyInviteCode">—</strong>
-                <button id="generateInviteBtn" class="btn primary" type="button">Gerar código</button>
-                <button id="copyInviteBtn" class="btn soft" type="button">Copiar</button>
+            <article id="familyInvitePanel" class="panel family-invite-panel">
+              <div class="panel-head">
+                <div><span class="eyebrow">ADMINISTRAÇÃO</span><h3>Vincular membro por e-mail</h3></div>
+                <div class="family-card-icon mini"><svg><use href="#i-user-plus"/></svg></div>
               </div>
+              <p class="muted">A pessoa precisa ter acessado o Stop Gastos ao menos uma vez com esse Gmail.</p>
+              <label class="field">E-mail da conta Google
+                <input id="familyMemberEmailInput" type="email" autocomplete="email" maxlength="120" placeholder="nome@gmail.com" />
+              </label>
+              <button id="inviteFamilyByEmailBtn" class="btn primary wide" type="button"><svg class="btn-icon"><use href="#i-user-plus"/></svg>Enviar convite</button>
+              <p id="familyInviteFeedback" class="form-hint">O convite aparece em tempo real para o usuário.</p>
             </article>
           </div>
 
-          <article id="familyAdminFinancePanel" class="panel">
+          <article id="familyAdminFinancePanel" class="panel family-finance-panel">
             <div class="panel-head">
               <div><span class="eyebrow">VISÃO DO ADMIN</span><h3>Gastos por membro</h3></div>
               <span class="muted">Somente o administrador vê os dados financeiros dos demais.</span>
             </div>
             <div id="familyMemberTotals" class="family-member-totals"></div>
-            <div class="table-wrap">
+            <div class="table-wrap family-table-wrap">
               <table class="data-table">
                 <thead><tr><th>Data</th><th>Membro</th><th>Descrição</th><th>Categoria</th><th class="right">Valor</th></tr></thead>
                 <tbody id="familyRecentTransactions"></tbody>
@@ -464,11 +499,11 @@
     </main>
 
     <nav class="mobile-nav">
-      <button class="active" data-nav="dashboard"><span>◫</span><small>Início</small></button>
-      <button data-nav="transactions"><span>↕</span><small>Gastos</small></button>
-      <button class="mobile-add" data-open="transaction">＋</button>
-      <button data-nav="budgets"><span>◎</span><small>Orçamento</small></button>
-      <button data-nav="reports"><span>⌁</span><small>Relatórios</small></button>
+      <button class="active" data-nav="dashboard"><svg class="mobile-icon"><use href="#i-home"/></svg><small>Início</small></button>
+      <button data-nav="transactions"><svg class="mobile-icon"><use href="#i-transactions"/></svg><small>Gastos</small></button>
+      <button class="mobile-add" data-open="transaction" aria-label="Novo lançamento"><svg class="mobile-plus"><use href="#i-plus"/></svg></button>
+      <button data-nav="family"><svg class="mobile-icon"><use href="#i-users"/></svg><small>Família</small></button>
+      <button data-nav="reports"><svg class="mobile-icon"><use href="#i-chart"/></svg><small>Relatórios</small></button>
     </nav>
   </div>
 

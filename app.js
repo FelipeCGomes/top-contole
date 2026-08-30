@@ -1,7 +1,7 @@
 'use strict';
 
 const VAULT_KEY = 'stop_gastos_vault_v1';
-const APP_VERSION = 1;
+const APP_VERSION = 2;
 const KDF_ITERATIONS = 180000;
 
 let appState = null;
@@ -36,6 +36,9 @@ const pageMeta = {
   budgets:['Orçamentos','Planeje seus limites por categoria'],
   goals:['Metas','Acompanhe seus objetivos financeiros'],
   calendar:['Calendário','Movimentações organizadas por dia'],
+  accounts:['Contas','Saldos por banco e carteira'],
+  cards:['Cartões','Faturas, limites e parcelamentos'],
+  bills:['Contas a pagar','Compromissos financeiros futuros'],
   reports:['Relatórios','Entenda seus hábitos financeiros'],
   settings:['Configurações','Segurança, aparência e backups']
 };
@@ -51,6 +54,7 @@ async function init(){
   calendarMonth = selectedMonth;
   $('#globalMonth').value = selectedMonth;
   bindEvents();
+  bindV2Events();
   setupPwa();
   const existing = localStorage.getItem(VAULT_KEY);
   if(existing){
@@ -79,12 +83,18 @@ function makeInitialState(){
     recurring:[],
     budgets:[],
     goals:[],
+    accounts:[],
+    cards:[],
+    bills:[],
+    transfers:[],
+    audit:[],
     settings:{
       currency:defaultsCache.currency || 'BRL',
       locale:defaultsCache.locale || 'pt-BR',
       monthlyBudget:Number(defaultsCache.monthlyBudget || 5000),
       autoLockMinutes:Number(defaultsCache.autoLockMinutes || 10),
-      theme:'system'
+      theme:'system',
+      privacyMode:false
     }
   };
 }
@@ -100,6 +110,11 @@ function normalizeState(data){
     recurring:Array.isArray(data.recurring) ? data.recurring : [],
     budgets:Array.isArray(data.budgets) ? data.budgets : [],
     goals:Array.isArray(data.goals) ? data.goals : [],
+    accounts:Array.isArray(data.accounts) ? data.accounts : [],
+    cards:Array.isArray(data.cards) ? data.cards : [],
+    bills:Array.isArray(data.bills) ? data.bills : [],
+    transfers:Array.isArray(data.transfers) ? data.transfers : [],
+    audit:Array.isArray(data.audit) ? data.audit : [],
     settings:Object.assign({}, base.settings, data.settings || {})
   };
 }
@@ -368,26 +383,35 @@ function navigate(name){
   $('#pageSubtitle').textContent = pageMeta[name][1];
   $('#sidebar').classList.remove('open');
   if(name === 'transactions') renderTransactions();
+  if(name === 'accounts') renderAccounts();
+  if(name === 'cards') renderCards();
+  if(name === 'bills') renderBills();
   if(name === 'recurring') renderRecurring();
   if(name === 'budgets') renderBudgets();
   if(name === 'goals') renderGoals();
   if(name === 'calendar') renderCalendar();
   if(name === 'reports') renderReports();
-  if(name === 'settings') syncSettingsFields();
+  if(name === 'settings'){ syncSettingsFields(); renderCategoryManager(); }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function renderAll(){
   if(!appState) return;
   populateCategorySelects();
+  populateFinanceSelects();
   renderDashboard();
   renderTransactions();
+  renderAccounts();
+  renderCards();
+  renderBills();
   renderRecurring();
   renderBudgets();
   renderGoals();
   renderCalendar();
   renderReports();
+  renderCategoryManager();
   syncSettingsFields();
+  applyPrivacy();
 }
 
 function renderDashboard(){
@@ -432,6 +456,7 @@ function renderDashboard(){
   renderTrend();
   renderCategoryDonut(monthTx);
   renderUpcoming();
+  renderSmartFinance();
 
   const recent = monthTx.slice().sort(sortTxDesc).slice(0,6);
   $('#recentTransactions').innerHTML = recent.length ? recent.map(transactionRowSimple).join('') : emptyTableRow(5,'Nenhum lançamento neste mês.');
@@ -509,7 +534,7 @@ function renderTransactions(){
   if(category && category !== 'all') tx = tx.filter(function(t){return t.category === category;});
   if(q) tx = tx.filter(function(t){
     const c = getCategory(t.category);
-    return (t.description + ' ' + c.name + ' ' + (t.notes || '')).toLowerCase().includes(q);
+    return (t.description + ' ' + c.name + ' ' + (t.notes || '') + ' ' + (t.tags || '')).toLowerCase().includes(q);
   });
 
   const allMonth = transactionsForMonth(selectedMonth);
@@ -527,15 +552,24 @@ function renderTransactions(){
 
 function transactionRowSimple(t){
   const c = getCategory(t.category);
-  return '<tr><td><div class="tx-desc"><span class="tx-avatar">' + c.icon + '</span><div><b>' + esc(t.description) + '</b><small>' + esc(t.payment || '') + '</small></div></div></td>' +
+  const inst = t.installmentCount>1 ? ' · Parcela ' + t.installmentNo + '/' + t.installmentCount : '';
+  const card = t.cardId ? getCard(t.cardId) : null;
+  const pay = card ? card.name + inst : (t.payment || '') + inst;
+  return '<tr><td><div class="tx-desc"><span class="tx-avatar">' + c.icon + '</span><div><b>' + esc(t.description) + '</b><small>' + esc(pay) + '</small></div></div></td>' +
     '<td>' + esc(c.name) + '</td><td>' + dateBR(t.date) + '</td><td><span class="type-pill ' + t.type + '">' + (t.type==='expense'?'Despesa':'Receita') + '</span></td>' +
     '<td class="right amount ' + t.type + '">' + (t.type==='expense'?'- ':'+ ') + money(t.amount) + '</td></tr>';
 }
 
 function transactionRowFull(t){
   const c = getCategory(t.category);
-  return '<tr><td><div class="tx-desc"><span class="tx-avatar">' + c.icon + '</span><div><b>' + esc(t.description) + '</b><small>' + esc(t.notes || (t.sourceRecurringId ? 'Gerado automaticamente' : 'Lançamento manual')) + '</small></div></div></td>' +
-    '<td>' + esc(c.name) + '</td><td>' + dateBR(t.date) + '</td><td>' + esc(t.payment || '—') + '</td>' +
+  const installment = t.installmentCount>1 ? 'Parcela ' + t.installmentNo + '/' + t.installmentCount + ' · compra ' + money(t.purchaseTotal || (Number(t.amount)*Number(t.installmentCount))) : '';
+  const tags = t.tags ? ' · #' + String(t.tags).split(',').map(function(x){return x.trim();}).filter(Boolean).join(' #') : '';
+  const info = installment || t.notes || (t.sourceRecurringId ? 'Gerado automaticamente' : 'Lançamento manual');
+  const card = t.cardId ? getCard(t.cardId) : null;
+  const account = t.accountId ? getAccount(t.accountId) : null;
+  const payment = card ? card.name : (account ? (t.payment || '') + ' · ' + account.name : (t.payment || '—'));
+  return '<tr><td><div class="tx-desc"><span class="tx-avatar">' + c.icon + '</span><div><b>' + esc(t.description) + '</b><small>' + esc(info + tags) + '</small></div></div></td>' +
+    '<td>' + esc(c.name) + '</td><td>' + dateBR(t.date) + '</td><td>' + esc(payment) + '</td>' +
     '<td><span class="type-pill ' + t.type + '">' + (t.type==='expense'?'Despesa':'Receita') + '</span></td>' +
     '<td class="right amount ' + t.type + '">' + (t.type==='expense'?'- ':'+ ') + money(t.amount) + '</td>' +
     '<td><div class="row-actions"><button class="row-btn edit-tx" data-id="' + t.id + '" title="Editar">✎</button><button class="row-btn delete-tx" data-id="' + t.id + '" title="Excluir">×</button></div></td></tr>';
@@ -552,10 +586,12 @@ function renderRecurring(){
   $('#recurringEmpty').hidden = list.length !== 0;
   $('#recurringGrid').innerHTML = list.map(function(r){
     const c = getCategory(r.category);
+    const isSub = r.kind === 'subscription';
+    const annual = isSub ? '<small class="annual-cost">Custo anual: ' + money(Number(r.amount)*12) + '</small>' : '';
     return '<article class="rec-card"><div class="card-top"><span class="category-icon">' + c.icon + '</span><div class="card-menu"><button class="row-btn edit-rec" data-id="' + r.id + '">✎</button><button class="row-btn delete-rec" data-id="' + r.id + '">×</button></div></div>' +
-      '<h4>' + esc(r.description) + '</h4><p>' + esc(c.name) + ' · dia ' + Number(r.day) + '</p>' +
+      '<h4>' + esc(r.description) + '</h4><p>' + esc(c.name) + ' · dia ' + Number(r.day) + '</p>' + annual +
       '<div class="rec-value ' + r.type + '">' + (r.type==='expense'?'- ':'+ ') + money(r.amount) + '</div>' +
-      '<div class="rec-bottom"><span class="type-pill ' + r.type + '">' + (r.type==='expense'?'Despesa':'Receita') + '</span><input class="toggle rec-toggle" data-id="' + r.id + '" type="checkbox" ' + (r.active!==false?'checked':'') + ' /></div></article>';
+      '<div class="rec-bottom"><span class="type-pill ' + r.type + '">' + (isSub?'Assinatura':(r.type==='expense'?'Despesa':'Receita')) + '</span><input class="toggle rec-toggle" data-id="' + r.id + '" type="checkbox" ' + (r.active!==false?'checked':'') + ' /></div></article>';
   }).join('');
 
   $$('.edit-rec').forEach(function(btn){ btn.onclick = function(){ editRecurring(btn.dataset.id); }; });
@@ -563,7 +599,7 @@ function renderRecurring(){
   $$('.rec-toggle').forEach(function(input){
     input.onchange = async function(){
       const rec = appState.recurring.find(function(r){return r.id===input.dataset.id;});
-      if(rec){ rec.active = input.checked; await saveVault(); toast(input.checked?'Recorrência ativada.':'Recorrência pausada.','success'); }
+      if(rec){ rec.active = input.checked; logAudit('recurring-toggle',rec.description); await saveVault(); toast(input.checked?'Recorrência ativada.':'Recorrência pausada.','success'); }
     };
   });
 }
@@ -624,10 +660,13 @@ function renderCalendar(){
     const key = localDateKey(d);
     const inMonth = d.getMonth() === monthIndex;
     const tx = appState.transactions.filter(function(t){return t.date===key;}).sort(sortTxDesc);
+    const bills = appState.bills.filter(function(b){return b.dueDate===key && !b.paid;});
     const out = tx.filter(function(t){return t.type==='expense';}).reduce(function(a,t){return a+Number(t.amount);},0);
-    const events = tx.slice(0,3).map(function(t){
-      return '<span class="calendar-event ' + t.type + '" title="' + esc(t.description) + '">' + esc(t.description) + '</span>';
-    }).join('');
+    const events = tx.slice(0,2).map(function(t){
+      return '<span class="calendar-event ' + t.type + '" title="' + esc(t.description) + '">' + esc(t.description) + (t.installmentCount>1?' '+t.installmentNo+'/'+t.installmentCount:'') + '</span>';
+    }).concat(bills.slice(0,2).map(function(b){
+      return '<span class="calendar-event bill" title="Pendente: '+esc(b.description)+'">⏳ '+esc(b.description)+'</span>';
+    })).join('');
     cells.push('<div class="calendar-cell ' + (inMonth?'':'outside ') + (key===todayKey?'today':'') + '"><span class="day-number">' + d.getDate() + '</span>' + (out?'<span class="day-total">-'+compactMoney(out)+'</span>':'') + events + '</div>');
   }
   $('#calendarGrid').innerHTML = cells.join('');
@@ -693,10 +732,15 @@ function openModal(type,data){
     setRadio('txType',data ? data.type : 'expense');
     $('#txDescription').value = data ? data.description : '';
     $('#txAmount').value = data ? data.amount : '';
-    $('#txDate').value = data ? data.date : localDateKey(new Date());
+    $('#txDate').value = data ? (data.purchaseDate || data.date) : localDateKey(new Date());
     $('#txCategory').value = data ? data.category : 'alimentacao';
     $('#txPayment').value = data ? (data.payment || 'Pix') : 'Pix';
+    $('#txAccount').value = data ? (data.accountId || '') : '';
+    $('#txCard').value = data ? (data.cardId || '') : '';
+    $('#txInstallments').value = data && data.installmentCount>1 ? 1 : 1;
+    $('#txTags').value = data ? (data.tags || '') : '';
     $('#txNotes').value = data ? (data.notes || '') : '';
+    updateInstallmentFields(data);
   }
   if(type === 'recurring'){
     $('#modalTitle').textContent = data ? 'Editar recorrência' : 'Novo custo fixo';
@@ -706,6 +750,7 @@ function openModal(type,data){
     $('#recurringId').value = data ? data.id : '';
     setRadio('recType',data ? data.type : 'expense');
     $('#recDescription').value = data ? data.description : '';
+    $('#recKind').value = data ? (data.kind || 'fixed') : 'fixed';
     $('#recAmount').value = data ? data.amount : '';
     $('#recDay').value = data ? data.day : new Date().getDate();
     $('#recCategory').value = data ? data.category : 'moradia';
@@ -733,6 +778,64 @@ function openModal(type,data){
     $('#goalDeadline').value = data ? (data.deadline || '') : '';
     $('#goalIcon').value = data ? (data.icon || '🎯') : '🎯';
   }
+  if(type === 'account'){
+    $('#modalTitle').textContent = data ? 'Editar conta' : 'Nova conta';
+    $('#modalEyebrow').textContent = 'CARTEIRA';
+    $('#accountForm').hidden = false;
+    $('#accountForm').reset();
+    $('#accountId').value = data ? data.id : '';
+    $('#accountName').value = data ? data.name : '';
+    $('#accountType').value = data ? (data.type || 'Conta corrente') : 'Conta corrente';
+    $('#accountOpening').value = data ? Number(data.openingBalance || 0) : 0;
+    $('#accountIcon').value = data ? (data.icon || '🏦') : '🏦';
+    $('#accountColor').value = data ? (data.color || '#7c5cff') : '#7c5cff';
+  }
+  if(type === 'card'){
+    $('#modalTitle').textContent = data ? 'Editar cartão' : 'Novo cartão';
+    $('#modalEyebrow').textContent = 'CRÉDITO';
+    $('#cardForm').hidden = false;
+    $('#cardForm').reset();
+    $('#cardId').value = data ? data.id : '';
+    $('#cardName').value = data ? data.name : '';
+    $('#cardBrand').value = data ? (data.brand || 'Visa') : 'Visa';
+    $('#cardLimit').value = data ? Number(data.limit || 0) : '';
+    $('#cardClosingDay').value = data ? Number(data.closingDay || 3) : 3;
+    $('#cardDueDay').value = data ? Number(data.dueDay || 10) : 10;
+    $('#cardAccount').value = data ? (data.accountId || '') : '';
+    $('#cardColor').value = data ? (data.color || '#141b34') : '#141b34';
+  }
+  if(type === 'bill'){
+    $('#modalTitle').textContent = data ? 'Editar conta prevista' : 'Nova conta a pagar/receber';
+    $('#modalEyebrow').textContent = 'AGENDA';
+    $('#billForm').hidden = false;
+    $('#billForm').reset();
+    $('#billId').value = data ? data.id : '';
+    setRadio('billType',data ? data.type : 'expense');
+    $('#billDescription').value = data ? data.description : '';
+    $('#billAmount').value = data ? data.amount : '';
+    $('#billDueDate').value = data ? data.dueDate : localDateKey(new Date());
+    $('#billCategory').value = data ? data.category : 'outros';
+    $('#billAccount').value = data ? (data.accountId || '') : '';
+    $('#billNotes').value = data ? (data.notes || '') : '';
+  }
+  if(type === 'transfer'){
+    $('#modalTitle').textContent = 'Transferir entre contas';
+    $('#modalEyebrow').textContent = 'TRANSFERÊNCIA';
+    $('#transferForm').hidden = false;
+    $('#transferForm').reset();
+    $('#transferDate').value = localDateKey(new Date());
+  }
+  if(type === 'category'){
+    $('#modalTitle').textContent = data ? 'Editar categoria' : 'Nova categoria';
+    $('#modalEyebrow').textContent = 'CATEGORIA';
+    $('#categoryForm').hidden = false;
+    $('#categoryForm').reset();
+    $('#categoryId').value = data ? data.id : '';
+    $('#categoryName').value = data ? data.name : '';
+    $('#categoryIcon').value = data ? (data.icon || '📦') : '📦';
+    $('#categoryColor').value = data ? (data.color || '#8d99ae') : '#8d99ae';
+    $('#categoryGroup').value = data ? (data.group || inferCategoryGroup(data.id)) : 'essential';
+  }
   if(type === 'backupPin'){
     $('#modalTitle').textContent = 'Restaurar backup';
     $('#modalEyebrow').textContent = 'CRIPTOGRAFADO';
@@ -742,7 +845,9 @@ function openModal(type,data){
 }
 
 function closeModalForms(){
-  ['transactionForm','recurringForm','budgetForm','goalForm','backupPinForm'].forEach(function(id){ $('#'+id).hidden = true; });
+  ['transactionForm','recurringForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm','backupPinForm'].forEach(function(id){
+    const el=$('#'+id); if(el) el.hidden = true;
+  });
 }
 
 function closeModal(){
@@ -754,27 +859,78 @@ function closeModal(){
 async function saveTransactionForm(e){
   e.preventDefault();
   const id = $('#transactionId').value;
-  const record = {
-    id:id || uid('tx'),
-    type:getRadio('txType'),
+  const existing = id ? appState.transactions.find(function(t){return t.id===id;}) : null;
+  const type = getRadio('txType');
+  const payment = $('#txPayment').value;
+  const total = Number($('#txAmount').value);
+  const purchaseDate = $('#txDate').value;
+  const cardId = $('#txCard').value || '';
+  const requestedInstallments = Math.max(1,Math.min(60,Number($('#txInstallments').value || 1)));
+  const base = {
+    type:type,
     description:$('#txDescription').value.trim(),
-    amount:Number($('#txAmount').value),
-    date:$('#txDate').value,
+    date:purchaseDate,
+    purchaseDate:purchaseDate,
     category:$('#txCategory').value,
-    payment:$('#txPayment').value,
+    payment:payment,
+    accountId:$('#txAccount').value || '',
+    cardId:payment==='Cartão de crédito' ? cardId : '',
+    tags:$('#txTags').value.trim(),
     notes:$('#txNotes').value.trim(),
     updatedAt:new Date().toISOString()
   };
-  if(!record.description || !record.date || !(record.amount>0)) return toast('Preencha descrição, valor e data.','error');
-  const index = appState.transactions.findIndex(function(t){return t.id===id;});
-  if(index>=0) record.sourceRecurringId = appState.transactions[index].sourceRecurringId;
-  if(index>=0) record.recurrenceKey = appState.transactions[index].recurrenceKey;
-  if(index>=0) appState.transactions[index] = Object.assign({},appState.transactions[index],record);
-  else appState.transactions.push(record);
+  if(!base.description || !purchaseDate || !(total>0)) return toast('Preencha descrição, valor e data.','error');
+
+  if(existing){
+    const record=Object.assign({},existing,base,{amount:total});
+    appState.transactions[appState.transactions.findIndex(function(t){return t.id===id;})]=record;
+    logAudit('transaction-update',record.description);
+    await saveVault(); closeModal(); renderAll(); toast('Lançamento atualizado.','success'); return;
+  }
+
+  if(type==='expense' && payment==='Cartão de crédito' && requestedInstallments>1 && !cardId){
+    return toast('Selecione um cartão para criar o parcelamento.','error');
+  }
+
+  if(type==='expense' && payment==='Cartão de crédito' && cardId){
+    const card=getCard(cardId);
+    if(!card) return toast('Cartão não encontrado.','error');
+    const group=uid('inst');
+    const count=requestedInstallments;
+    const regular=Math.floor((total/count)*100)/100;
+    let allocated=0;
+    const firstMonth=cardInvoiceMonth(purchaseDate,card);
+    for(let i=1;i<=count;i++){
+      const amount=i===count ? Math.round((total-allocated)*100)/100 : regular;
+      allocated=Math.round((allocated+amount)*100)/100;
+      const invoiceMonth=shiftMonth(firstMonth,i-1);
+      const due=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
+      appState.transactions.push(Object.assign({},base,{
+        id:uid('tx'),
+        amount:amount,
+        date:due,
+        invoiceMonth:invoiceMonth,
+        purchaseTotal:total,
+        installmentGroup:group,
+        installmentNo:i,
+        installmentCount:count,
+        installmentAmount:amount,
+        createdAt:new Date().toISOString()
+      }));
+    }
+    logAudit('installment-create',base.description+' · '+count+'x · '+money(total));
+    await saveVault(); closeModal(); renderAll();
+    toast(count+'x de aproximadamente '+money(total/count)+' criadas. Total: '+money(total)+'.','success');
+    return;
+  }
+
+  const record=Object.assign({},base,{id:uid('tx'),amount:total,createdAt:new Date().toISOString()});
+  appState.transactions.push(record);
+  logAudit('transaction-create',record.description);
   await saveVault();
   closeModal();
   renderAll();
-  toast(index>=0?'Lançamento atualizado.':'Lançamento salvo.','success');
+  toast('Lançamento salvo.','success');
 }
 
 async function saveRecurringForm(e){
@@ -783,6 +939,7 @@ async function saveRecurringForm(e){
   const record = {
     id:id || uid('rec'),
     type:getRadio('recType'),
+    kind:$('#recKind').value || 'fixed',
     description:$('#recDescription').value.trim(),
     amount:Number($('#recAmount').value),
     day:Math.max(1,Math.min(31,Number($('#recDay').value))),
@@ -796,6 +953,7 @@ async function saveRecurringForm(e){
   if(index>=0) appState.recurring[index] = Object.assign({},appState.recurring[index],record);
   else appState.recurring.push(record);
   ensureRecurringForMonth(selectedMonth);
+  logAudit(index>=0?'recurring-update':'recurring-create',record.description);
   await saveVault();
   closeModal();
   renderAll();
@@ -932,6 +1090,20 @@ async function loadDemoData(){
       {id:uid('bud'),category:'compras',amount:600}
     );
   }
+  if(!appState.accounts.length){
+    const acc1={id:uid('acc'),name:'Conta principal',type:'Conta corrente',openingBalance:1500,icon:'🏦',color:'#7c5cff'};
+    const acc2={id:uid('acc'),name:'Carteira',type:'Dinheiro',openingBalance:180,icon:'👛',color:'#17c3b2'};
+    appState.accounts.push(acc1,acc2);
+  }
+  if(!appState.cards.length){
+    appState.cards.push({id:uid('card'),name:'Cartão principal',brand:'Mastercard',limit:5000,closingDay:3,dueDay:10,accountId:appState.accounts[0]?appState.accounts[0].id:'',color:'#141b34'});
+  }
+  if(!appState.bills.length){
+    appState.bills.push(
+      {id:uid('bill'),type:'expense',description:'Energia elétrica',amount:210,dueDate:localDateKey(safeMonthDate(m0,28)),category:'moradia',accountId:appState.accounts[0]?appState.accounts[0].id:'',paid:false,notes:'Demonstração'},
+      {id:uid('bill'),type:'expense',description:'Plano de internet móvel',amount:79.90,dueDate:localDateKey(safeMonthDate(shiftMonth(m0,1),8)),category:'assinaturas',accountId:appState.accounts[0]?appState.accounts[0].id:'',paid:false,notes:'Demonstração'}
+    );
+  }
   if(!appState.goals.length){
     appState.goals.push(
       {id:uid('goal'),name:'Reserva de emergência',target:15000,current:4600,deadline:addMonthsDate(8),icon:'🛟'},
@@ -947,7 +1119,7 @@ async function loadDemoData(){
 function populateCategorySelects(){
   if(!appState) return;
   const opts = appState.categories.map(function(c){return '<option value="' + esc(c.id) + '">' + c.icon + ' ' + esc(c.name) + '</option>';}).join('');
-  ['txCategory','recCategory','budgetCategory'].forEach(function(id){
+  ['txCategory','recCategory','budgetCategory','billCategory'].forEach(function(id){
     const el = $('#'+id);
     if(!el) return;
     const current = el.value;
@@ -965,6 +1137,7 @@ function syncSettingsFields(){
   $('#themeSelect').value = appState.settings.theme || 'system';
   $('#monthlyBudgetInput').value = Number(appState.settings.monthlyBudget || 0);
   $('#autoLockSelect').value = String(Number(appState.settings.autoLockMinutes || 0));
+  if($('#privacyBtn')) $('#privacyBtn').textContent = appState.settings.privacyMode ? '🙈' : '👁';
 }
 
 function quickToggleTheme(){
@@ -1109,6 +1282,324 @@ function getRadio(name){ const el=$('input[name="'+name+'"]:checked'); return el
 function esc(value){
   return String(value==null?'':value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch];});
 }
+
+
+function bindV2Events(){
+  $('#privacyBtn').addEventListener('click', async function(){
+    if(!appState) return;
+    appState.settings.privacyMode=!appState.settings.privacyMode;
+    applyPrivacy();
+    await saveVault();
+  });
+  $('#accountForm').addEventListener('submit',saveAccountForm);
+  $('#cardForm').addEventListener('submit',saveCardForm);
+  $('#billForm').addEventListener('submit',saveBillForm);
+  $('#transferForm').addEventListener('submit',saveTransferForm);
+  $('#categoryForm').addEventListener('submit',saveCategoryForm);
+  $('#txPayment').addEventListener('change',function(){updateInstallmentFields();});
+  $('#txAmount').addEventListener('input',function(){updateInstallmentFields();});
+  $('#txInstallments').addEventListener('input',function(){updateInstallmentFields();});
+  $('#txCard').addEventListener('change',function(){updateInstallmentFields();});
+  $('#printReportBtn').addEventListener('click',function(){window.print();});
+}
+
+function applyPrivacy(){
+  if(!appState) return;
+  document.body.classList.toggle('privacy-mode',!!appState.settings.privacyMode);
+  if($('#privacyBtn')){
+    $('#privacyBtn').textContent=appState.settings.privacyMode?'🙈':'👁';
+    $('#privacyBtn').title=appState.settings.privacyMode?'Mostrar valores':'Ocultar valores';
+  }
+}
+
+function populateFinanceSelects(){
+  if(!appState) return;
+  const accounts='<option value="">Sem conta vinculada</option>'+appState.accounts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';}).join('');
+  ['txAccount','cardAccount','billAccount'].forEach(function(id){
+    const el=$('#'+id); if(!el) return; const current=el.value; el.innerHTML=accounts; el.value=current||'';
+  });
+  const transferAccounts=appState.accounts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';}).join('');
+  ['transferFrom','transferTo'].forEach(function(id){
+    const el=$('#'+id); if(!el) return; const current=el.value; el.innerHTML=transferAccounts; if(current) el.value=current;
+  });
+  const cards='<option value="">Selecione um cartão</option>'+appState.cards.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name+' · '+c.brand)+'</option>';}).join('');
+  const cardEl=$('#txCard'); if(cardEl){const current=cardEl.value; cardEl.innerHTML=cards; cardEl.value=current||'';}
+}
+
+function updateInstallmentFields(editing){
+  if(!$('#creditFields')) return;
+  const isCredit=$('#txPayment').value==='Cartão de crédito';
+  $('#creditFields').classList.toggle('show',isCredit);
+  if(!isCredit){$('#installmentPreview').textContent='À vista';return;}
+  const total=Number($('#txAmount').value||0);
+  const count=Math.max(1,Math.min(60,Number($('#txInstallments').value||1)));
+  if(editing && editing.installmentCount>1){
+    $('#installmentPreview').textContent='Editando apenas a parcela '+editing.installmentNo+'/'+editing.installmentCount+' · '+money(editing.amount)+' de uma compra de '+money(editing.purchaseTotal||0);
+    return;
+  }
+  const each=count?total/count:0;
+  const card=getCard($('#txCard').value);
+  let due='';
+  if(card && $('#txDate').value){
+    const first=cardInvoiceMonth($('#txDate').value,card);
+    due=' · 1ª fatura em '+monthLabel(first);
+  }
+  $('#installmentPreview').textContent=count+'x de '+money(each)+' · total '+money(total)+due;
+}
+
+function cardInvoiceMonth(purchaseDate,card){
+  const d=new Date(purchaseDate+'T12:00:00');
+  const base=purchaseDate.slice(0,7);
+  return d.getDate()<=Number(card.closingDay||1)?base:shiftMonth(base,1);
+}
+
+function getAccount(id){
+  return appState && appState.accounts.find(function(a){return a.id===id;}) || null;
+}
+function getCard(id){
+  return appState && appState.cards.find(function(c){return c.id===id;}) || null;
+}
+function accountBalance(account){
+  let value=Number(account.openingBalance||0);
+  appState.transactions.forEach(function(t){
+    if(t.accountId!==account.id) return;
+    if(t.type==='income') value+=Number(t.amount||0);
+    if(t.type==='expense') value-=Number(t.amount||0);
+  });
+  appState.transfers.forEach(function(t){
+    if(t.fromAccountId===account.id) value-=Number(t.amount||0);
+    if(t.toAccountId===account.id) value+=Number(t.amount||0);
+  });
+  return value;
+}
+
+function renderAccounts(){
+  if(!appState || !$('#accountsGrid')) return;
+  const monthTx=transactionsForMonth(selectedMonth);
+  const income=monthTx.filter(function(t){return t.type==='income'&&t.accountId;}).reduce(function(a,t){return a+Number(t.amount);},0);
+  const expense=monthTx.filter(function(t){return t.type==='expense'&&t.accountId;}).reduce(function(a,t){return a+Number(t.amount);},0);
+  const total=appState.accounts.reduce(function(a,x){return a+accountBalance(x);},0);
+  $('#accountsTotal').textContent=money(total);
+  $('#accountsCount').textContent=String(appState.accounts.length);
+  $('#accountsIncome').textContent=money(income);
+  $('#accountsExpense').textContent=money(expense);
+  $('#accountsEmpty').hidden=appState.accounts.length!==0;
+  $('#accountsGrid').innerHTML=appState.accounts.map(function(a){
+    const bal=accountBalance(a);
+    const monthIn=monthTx.filter(function(t){return t.accountId===a.id&&t.type==='income';}).reduce(function(x,t){return x+Number(t.amount);},0);
+    const monthOut=monthTx.filter(function(t){return t.accountId===a.id&&t.type==='expense';}).reduce(function(x,t){return x+Number(t.amount);},0);
+    return '<article class="finance-card account-card" style="--accent:'+esc(a.color||'#7c5cff')+'"><div class="card-top"><span class="finance-icon">'+esc(a.icon||'🏦')+'</span><div class="card-menu"><button class="row-btn edit-account" data-id="'+a.id+'">✎</button><button class="row-btn delete-account" data-id="'+a.id+'">×</button></div></div><span>'+esc(a.type||'Conta')+'</span><h4>'+esc(a.name)+'</h4><strong class="finance-number">'+money(bal)+'</strong><div class="mini-stats"><span>Entradas <b>'+money(monthIn)+'</b></span><span>Saídas <b>'+money(monthOut)+'</b></span></div></article>';
+  }).join('');
+  $('.edit-account').forEach(function(b){b.onclick=function(){const x=getAccount(b.dataset.id);if(x)openModal('account',x);};});
+  $('.delete-account').forEach(function(b){b.onclick=function(){deleteAccount(b.dataset.id);};});
+}
+
+async function saveAccountForm(e){
+  e.preventDefault();
+  const id=$('#accountId').value;
+  const record={id:id||uid('acc'),name:$('#accountName').value.trim(),type:$('#accountType').value,openingBalance:Number($('#accountOpening').value||0),icon:$('#accountIcon').value,color:$('#accountColor').value,updatedAt:new Date().toISOString()};
+  if(!record.name)return toast('Informe o nome da conta.','error');
+  const idx=appState.accounts.findIndex(function(a){return a.id===id;});
+  if(idx>=0)appState.accounts[idx]=Object.assign({},appState.accounts[idx],record);else appState.accounts.push(record);
+  logAudit(idx>=0?'account-update':'account-create',record.name);
+  await saveVault(); closeModal(); renderAll(); toast('Conta salva.','success');
+}
+async function deleteAccount(id){
+  const a=getAccount(id); if(!a)return;
+  if(!await confirmDialog('Excluir conta?','Os lançamentos existentes serão preservados, mas ficarão sem vínculo com "'+a.name+'".'))return;
+  appState.accounts=appState.accounts.filter(function(x){return x.id!==id;});
+  appState.cards.forEach(function(c){if(c.accountId===id)c.accountId='';});
+  logAudit('account-delete',a.name); await saveVault(); renderAll(); toast('Conta excluída.','success');
+}
+
+function cardCommitted(card){
+  const today=localDateKey(new Date());
+  return appState.transactions.filter(function(t){return t.cardId===card.id&&t.type==='expense'&&t.date>=today;}).reduce(function(a,t){return a+Number(t.amount);},0);
+}
+function cardInvoice(card,month){
+  return appState.transactions.filter(function(t){return t.cardId===card.id&&t.type==='expense'&&(t.invoiceMonth||t.date.slice(0,7))===month;}).reduce(function(a,t){return a+Number(t.amount);},0);
+}
+function renderCards(){
+  if(!appState || !$('#cardsGrid')) return;
+  const limit=appState.cards.reduce(function(a,c){return a+Number(c.limit||0);},0);
+  const used=appState.cards.reduce(function(a,c){return a+cardCommitted(c);},0);
+  const invoice=appState.cards.reduce(function(a,c){return a+cardInvoice(c,selectedMonth);},0);
+  $('#cardsLimit').textContent=money(limit); $('#cardsUsed').textContent=money(used); $('#cardsAvailable').textContent=money(Math.max(0,limit-used)); $('#cardsInvoice').textContent=money(invoice);
+  $('#invoiceMonthLabel').textContent=monthLabel(selectedMonth);
+  $('#cardsGrid').innerHTML=appState.cards.map(function(c){
+    const committed=cardCommitted(c), inv=cardInvoice(c,selectedMonth), lim=Number(c.limit||0), pct=lim?committed/lim*100:0;
+    return '<article class="credit-card" style="--card-bg:'+esc(c.color||'#141b34')+'"><div class="credit-top"><span>'+esc(c.brand||'Cartão')+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+c.id+'">✎</button><button class="row-btn delete-card" data-id="'+c.id+'">×</button></div></div><h4>'+esc(c.name)+'</h4><div class="credit-limit"><span>Fatura de '+shortMonth(selectedMonth)+'</span><strong>'+money(inv)+'</strong></div><div class="progress"><i style="width:'+Math.min(100,pct)+'%"></i></div><div class="credit-meta"><span>Limite '+money(lim)+'</span><span>Disponível '+money(Math.max(0,lim-committed))+'</span></div><small>Fecha dia '+Number(c.closingDay||1)+' · vence dia '+Number(c.dueDay||10)+'</small></article>';
+  }).join('');
+  $('.edit-card').forEach(function(b){b.onclick=function(){const x=getCard(b.dataset.id);if(x)openModal('card',x);};});
+  $('.delete-card').forEach(function(b){b.onclick=function(){deleteCard(b.dataset.id);};});
+  const rows=appState.transactions.filter(function(t){return t.cardId&&t.type==='expense'&&(t.invoiceMonth||t.date.slice(0,7))===selectedMonth;}).sort(sortTxDesc);
+  $('#cardInvoiceTable').innerHTML=rows.length?rows.map(function(t){
+    const c=getCard(t.cardId);
+    const parcel=t.installmentCount ? t.installmentNo+'/'+t.installmentCount : '1/1';
+    return '<tr><td>'+esc(t.description)+'</td><td>'+esc(c?c.name:'Cartão removido')+'</td><td><span class="installment-pill">'+parcel+'</span></td><td>'+money(t.purchaseTotal||t.amount)+'</td><td>'+dateBR(t.date)+'</td><td class="right amount expense">'+money(t.amount)+'</td></tr>';
+  }).join(''):emptyTableRow(6,'Nenhuma compra nesta fatura.');
+}
+
+async function saveCardForm(e){
+  e.preventDefault();
+  const id=$('#cardId').value;
+  const record={id:id||uid('card'),name:$('#cardName').value.trim(),brand:$('#cardBrand').value,limit:Number($('#cardLimit').value||0),closingDay:Math.max(1,Math.min(31,Number($('#cardClosingDay').value))),dueDay:Math.max(1,Math.min(31,Number($('#cardDueDay').value))),accountId:$('#cardAccount').value||'',color:$('#cardColor').value,updatedAt:new Date().toISOString()};
+  if(!record.name)return toast('Informe o nome do cartão.','error');
+  const idx=appState.cards.findIndex(function(c){return c.id===id;});
+  if(idx>=0)appState.cards[idx]=Object.assign({},appState.cards[idx],record);else appState.cards.push(record);
+  logAudit(idx>=0?'card-update':'card-create',record.name);
+  await saveVault(); closeModal(); renderAll(); toast('Cartão salvo.','success');
+}
+async function deleteCard(id){
+  const c=getCard(id);if(!c)return;
+  if(!await confirmDialog('Excluir cartão?','As compras e parcelas já registradas serão mantidas no histórico.'))return;
+  appState.cards=appState.cards.filter(function(x){return x.id!==id;});
+  logAudit('card-delete',c.name); await saveVault(); renderAll(); toast('Cartão excluído.','success');
+}
+
+function renderBills(){
+  if(!appState || !$('#billsGrid')) return;
+  const today=localDateKey(new Date());
+  const next7=new Date(); next7.setDate(next7.getDate()+7); const next7Key=localDateKey(next7);
+  const month=appState.bills.filter(function(b){return b.dueDate&&b.dueDate.slice(0,7)===selectedMonth;});
+  const pending=month.filter(function(b){return !b.paid&&b.type==='expense';}).reduce(function(a,b){return a+Number(b.amount);},0);
+  const overdue=appState.bills.filter(function(b){return !b.paid&&b.type==='expense'&&b.dueDate<today;}).reduce(function(a,b){return a+Number(b.amount);},0);
+  const paid=month.filter(function(b){return b.paid&&b.type==='expense';}).reduce(function(a,b){return a+Number(b.amount);},0);
+  const soon=appState.bills.filter(function(b){return !b.paid&&b.type==='expense'&&b.dueDate>=today&&b.dueDate<=next7Key;}).reduce(function(a,b){return a+Number(b.amount);},0);
+  $('#billsPending').textContent=money(pending); $('#billsOverdue').textContent=money(overdue); $('#billsPaid').textContent=money(paid); $('#billsNext7').textContent=money(soon);
+  const list=appState.bills.slice().sort(function(a,b){return String(a.dueDate).localeCompare(String(b.dueDate));});
+  $('#billsEmpty').hidden=list.length!==0;
+  $('#billsGrid').innerHTML=list.map(function(b){
+    const cat=getCategory(b.category), overdue=!b.paid&&b.dueDate<today;
+    return '<article class="bill-card '+(b.paid?'paid ':'')+(overdue?'overdue':'')+'"><div class="bill-date"><b>'+dateBR(b.dueDate)+'</b><span>'+(b.paid?'Pago':(overdue?'Vencido':'Pendente'))+'</span></div><div class="bill-main"><span>'+cat.icon+' '+esc(cat.name)+'</span><h4>'+esc(b.description)+'</h4><strong class="'+b.type+'">'+(b.type==='expense'?'- ':'+ ')+money(b.amount)+'</strong></div><div class="bill-actions">'+(!b.paid?'<button class="btn mini pay-bill" data-id="'+b.id+'">✓ Marcar pago</button>':'<span class="paid-badge">✓ concluído</span>')+'<button class="row-btn edit-bill" data-id="'+b.id+'">✎</button><button class="row-btn delete-bill" data-id="'+b.id+'">×</button></div></article>';
+  }).join('');
+  $('.pay-bill').forEach(function(x){x.onclick=function(){payBill(x.dataset.id);};});
+  $('.edit-bill').forEach(function(x){x.onclick=function(){const b=appState.bills.find(function(y){return y.id===x.dataset.id;});if(b)openModal('bill',b);};});
+  $('.delete-bill').forEach(function(x){x.onclick=function(){deleteBill(x.dataset.id);};});
+}
+async function saveBillForm(e){
+  e.preventDefault();
+  const id=$('#billId').value;
+  const old=appState.bills.find(function(b){return b.id===id;});
+  const record={id:id||uid('bill'),type:getRadio('billType'),description:$('#billDescription').value.trim(),amount:Number($('#billAmount').value),dueDate:$('#billDueDate').value,category:$('#billCategory').value,accountId:$('#billAccount').value||'',notes:$('#billNotes').value.trim(),paid:old?!!old.paid:false,paidAt:old?old.paidAt:'',transactionId:old?old.transactionId:'',updatedAt:new Date().toISOString()};
+  if(!record.description||!record.dueDate||!(record.amount>0))return toast('Revise descrição, valor e vencimento.','error');
+  const idx=appState.bills.findIndex(function(b){return b.id===id;});
+  if(idx>=0)appState.bills[idx]=record;else appState.bills.push(record);
+  logAudit(idx>=0?'bill-update':'bill-create',record.description); await saveVault(); closeModal(); renderAll(); toast('Conta prevista salva.','success');
+}
+async function payBill(id){
+  const b=appState.bills.find(function(x){return x.id===id;});if(!b||b.paid)return;
+  b.paid=true;b.paidAt=localDateKey(new Date());
+  const tx={id:uid('tx'),type:b.type,description:b.description,amount:Number(b.amount),date:b.paidAt,category:b.category,payment:'Conta paga',accountId:b.accountId||'',billId:b.id,notes:b.notes||'Gerado a partir de conta prevista',createdAt:new Date().toISOString()};
+  appState.transactions.push(tx);b.transactionId=tx.id;logAudit('bill-paid',b.description);await saveVault();renderAll();toast('Conta marcada como paga e lançada no caixa.','success');
+}
+async function deleteBill(id){
+  const b=appState.bills.find(function(x){return x.id===id;});if(!b)return;
+  if(!await confirmDialog('Excluir conta prevista?','O lançamento já realizado, se houver, não será apagado.'))return;
+  appState.bills=appState.bills.filter(function(x){return x.id!==id;});logAudit('bill-delete',b.description);await saveVault();renderAll();toast('Conta prevista excluída.','success');
+}
+
+async function saveTransferForm(e){
+  e.preventDefault();
+  const from=$('#transferFrom').value,to=$('#transferTo').value,amount=Number($('#transferAmount').value),date=$('#transferDate').value;
+  if(!from||!to||from===to)return toast('Escolha contas de origem e destino diferentes.','error');
+  if(!(amount>0)||!date)return toast('Informe valor e data.','error');
+  const record={id:uid('trf'),fromAccountId:from,toAccountId:to,amount:amount,date:date,notes:$('#transferNotes').value.trim(),createdAt:new Date().toISOString()};
+  appState.transfers.push(record);logAudit('transfer-create',(getAccount(from)?.name||'')+' → '+(getAccount(to)?.name||''));await saveVault();closeModal();renderAll();toast('Transferência registrada sem alterar receitas/despesas.','success');
+}
+
+function inferCategoryGroup(id){
+  if(['moradia','alimentacao','transporte','saude','educacao','dividas'].includes(id))return 'essential';
+  if(['lazer','assinaturas','compras'].includes(id))return 'wants';
+  if(['investimentos'].includes(id))return 'future';
+  if(['salario'].includes(id))return 'income';
+  return 'essential';
+}
+function renderCategoryManager(){
+  if(!appState||!$('#categoryManager'))return;
+  $('#categoryManager').innerHTML=appState.categories.map(function(c){
+    const group=c.group||inferCategoryGroup(c.id);
+    const label={essential:'Essencial',wants:'Desejos',future:'Futuro',income:'Receita'}[group]||'Outro';
+    return '<div class="category-manage-row"><i style="background:'+esc(c.color)+'"></i><span>'+esc(c.icon+' '+c.name)+'</span><small>'+label+'</small><button class="row-btn edit-category" data-id="'+c.id+'">✎</button><button class="row-btn delete-category" data-id="'+c.id+'">×</button></div>';
+  }).join('');
+  $('.edit-category').forEach(function(b){b.onclick=function(){const c=appState.categories.find(function(x){return x.id===b.dataset.id;});if(c)openModal('category',c);};});
+  $('.delete-category').forEach(function(b){b.onclick=function(){deleteCategory(b.dataset.id);};});
+}
+async function saveCategoryForm(e){
+  e.preventDefault();
+  const id=$('#categoryId').value;
+  const name=$('#categoryName').value.trim();
+  if(!name)return toast('Informe o nome da categoria.','error');
+  const record={id:id||uid('cat'),name:name,icon:$('#categoryIcon').value.trim()||'📦',color:$('#categoryColor').value,group:$('#categoryGroup').value};
+  const idx=appState.categories.findIndex(function(c){return c.id===id;});
+  if(idx>=0)appState.categories[idx]=Object.assign({},appState.categories[idx],record);else appState.categories.push(record);
+  logAudit(idx>=0?'category-update':'category-create',record.name);await saveVault();closeModal();renderAll();toast('Categoria salva.','success');
+}
+async function deleteCategory(id){
+  const c=appState.categories.find(function(x){return x.id===id;});if(!c)return;
+  const used=appState.transactions.some(function(t){return t.category===id;})||appState.recurring.some(function(r){return r.category===id;})||appState.budgets.some(function(b){return b.category===id;})||appState.bills.some(function(b){return b.category===id;});
+  if(used)return toast('Esta categoria está em uso. Reclassifique os itens antes de excluí-la.','error');
+  if(!await confirmDialog('Excluir categoria?','A categoria "'+c.name+'" será removida.'))return;
+  appState.categories=appState.categories.filter(function(x){return x.id!==id;});logAudit('category-delete',c.name);await saveVault();renderAll();toast('Categoria excluída.','success');
+}
+
+function renderSmartFinance(){
+  if(!appState||!$('#smartAlerts'))return;
+  const tx=transactionsForMonth(selectedMonth),income=sumByType(tx,'income'),expense=sumByType(tx,'expense'),limit=Number(appState.settings.monthlyBudget||0);
+  const savings=income?((income-expense)/income)*100:0;
+  const fixed=tx.filter(function(t){return t.type==='expense'&&t.sourceRecurringId;}).reduce(function(a,t){return a+Number(t.amount);},0);
+  const fixedPct=income?fixed/income*100:0;
+  const today=localDateKey(new Date());
+  const overdue=appState.bills.filter(function(b){return !b.paid&&b.type==='expense'&&b.dueDate<today;});
+  const alerts=[];
+  if(limit&&expense/limit>=1)alerts.push({kind:'danger',icon:'!',text:'Orçamento mensal excedido em '+money(expense-limit)+'.'});
+  else if(limit&&expense/limit>=.8)alerts.push({kind:'warn',icon:'⚠',text:'Você já utilizou '+formatPct(expense/limit*100)+' do orçamento mensal.'});
+  if(overdue.length)alerts.push({kind:'danger',icon:'⌛',text:overdue.length+' conta(s) vencida(s), totalizando '+money(overdue.reduce(function(a,b){return a+Number(b.amount);},0))+'.'});
+  const highCard=appState.cards.find(function(c){return Number(c.limit)>0&&cardCommitted(c)/Number(c.limit)>=.8;});
+  if(highCard)alerts.push({kind:'warn',icon:'▣',text:'O cartão '+highCard.name+' está com '+formatPct(cardCommitted(highCard)/Number(highCard.limit)*100)+' do limite comprometido.'});
+  if(income>0&&savings>=20)alerts.push({kind:'good',icon:'✓',text:'Boa taxa de economia: '+formatPct(savings)+'.'});
+  $('#smartAlerts').innerHTML=alerts.slice(0,3).map(function(a){return '<div class="smart-alert '+a.kind+'"><span>'+a.icon+'</span><p>'+esc(a.text)+'</p></div>';}).join('');
+
+  let score=100,reasons=[];
+  if(income<=0){score-=10;reasons.push('Registre sua renda para um score mais preciso.');}
+  if(savings<0){score-=30;reasons.push('Despesas acima das receitas.');}
+  else if(savings<10){score-=15;reasons.push('Taxa de economia abaixo de 10%.');}
+  else if(savings>=20)reasons.push('Boa margem de economia.');
+  if(limit&&expense>limit){score-=20;reasons.push('Orçamento mensal excedido.');}
+  if(fixedPct>60){score-=15;reasons.push('Custos fixos acima de 60% da renda.');}
+  if(overdue.length){score-=20;reasons.push('Existem contas vencidas.');}
+  score=Math.max(0,Math.min(100,score));
+  $('#healthScore').textContent=String(score);$('#healthScoreBadge').textContent=score+'/100';
+  $('#healthLabel').textContent=score>=85?'Excelente':score>=70?'Saudável':score>=50?'Atenção':'Crítico';
+  $('#healthReasons').innerHTML=reasons.slice(0,3).map(function(r){return '<p>• '+esc(r)+'</p>';}).join('');
+  $('#healthScoreRing').style.background='conic-gradient(var(--success) '+(score*3.6)+'deg,var(--panel-soft) 0deg)';
+
+  const months=[];for(let i=0;i<6;i++)months.push(shiftMonth(selectedMonth,i));
+  const forecast=months.map(function(m){
+    const existing=transactionsForMonth(m),existingInc=sumByType(existing,'income'),existingExp=sumByType(existing,'expense');
+    let inc=existingInc,exp=existingExp;
+    appState.recurring.filter(function(r){return r.active!==false;}).forEach(function(r){
+      const key=r.id+':'+m;
+      const already=appState.transactions.some(function(t){return t.recurrenceKey===key;});
+      if(!already){if(r.type==='income')inc+=Number(r.amount);else exp+=Number(r.amount);}
+    });
+    appState.bills.filter(function(b){return !b.paid&&b.dueDate.slice(0,7)===m;}).forEach(function(b){if(b.type==='income')inc+=Number(b.amount);else exp+=Number(b.amount);});
+    return {m:m,inc:inc,exp:exp,bal:inc-exp};
+  });
+  const max=Math.max(1,...forecast.map(function(x){return Math.max(Math.abs(x.bal),x.inc,x.exp);}));
+  $('#cashFlowForecast').innerHTML=forecast.map(function(x){
+    const h=Math.max(8,Math.abs(x.bal)/max*120);
+    return '<div class="forecast-month"><div class="forecast-value '+(x.bal>=0?'positive':'negative')+'" style="height:'+h+'px"><span>'+compactMoney(x.bal)+'</span></div><b>'+shortMonth(x.m)+'</b><small>'+money(x.inc)+' / '+money(x.exp)+'</small></div>';
+  }).join('');
+}
+
+function logAudit(action,detail){
+  if(!appState)return;
+  appState.audit=Array.isArray(appState.audit)?appState.audit:[];
+  appState.audit.unshift({id:uid('audit'),action:action,detail:String(detail||''),at:new Date().toISOString()});
+  if(appState.audit.length>200)appState.audit.length=200;
+}
+
 
 function setupPwa(){
   if('serviceWorker' in navigator){

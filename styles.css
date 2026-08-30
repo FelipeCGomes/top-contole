@@ -755,6 +755,32 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .mini-stats span{display:grid;gap:2px;color:var(--muted);font-size:8px}
 .mini-stats b{color:var(--text);font-size:9px}
 
+
+.account-card{
+  position:relative;
+  overflow:hidden;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:var(--surface);
+  box-shadow:var(--shadow-soft);
+  transition:transform .18s var(--ease),border-color .18s ease;
+}
+.account-card:hover{transform:translateY(-2px);border-color:var(--line-strong)}
+.category-icon{
+  width:30px;
+  height:30px;
+  border-radius:9px;
+  display:grid;
+  place-items:center;
+  background:var(--surface-2);
+  flex:0 0 auto;
+}
+.big{font-size:1.12em;font-weight:800}
+.family-info-card{background:linear-gradient(145deg,rgba(22,199,183,.045),transparent 55%),var(--surface)}
+.family-table-wrap{margin-top:2px}
+.data-table{width:100%}
+
 /* Credit cards */
 .credit-card{
   min-height:205px;

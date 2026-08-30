@@ -39,11 +39,11 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - O membro recebe uma notificação em tempo real dentro do Stop Gastos
 - O membro escolhe **Aceitar** ou **Recusar**
 - Aceitando: o vínculo passa para **Ativo**
-- Recusando: o vínculo familiar passa para **Inativo**
+- Recusando: o vínculo familiar passa para **Recusado**
 - O membro registra somente os próprios gastos
 - O administrador visualiza o consolidado e os lançamentos dos membros ativos
 - Membros comuns não podem ler os dados financeiros de outros membros
-- O admin acompanha membros Ativos, Pendentes e Inativos
+- O admin acompanha membros Ativos, Pendentes e Recusados
 - Sino de notificações com badge no topo do aplicativo
 
 ## Estrutura Firebase
@@ -60,9 +60,9 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 
 - `pending`: convite enviado e aguardando resposta
 - `active`: convite aceito
-- `inactive`: convite recusado ou vínculo desativado
+- `declined`: convite recusado ou vínculo desativado
 
-O status inativo é referente ao **vínculo com a família**. Ele não desativa a conta Google/Firebase do usuário.
+O status recusado é referente ao **vínculo com a família**. Ele não desativa a conta Google/Firebase do usuário.
 
 ## Segurança
 

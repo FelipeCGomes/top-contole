@@ -486,6 +486,16 @@ async function getFamilyContext(){
   };
 }
 
+function watchFamilyMembers(familyId,callback){
+  requireUser();
+  if(!familyId) return ()=>{};
+  return onSnapshot(collection(db,'families',familyId,'members'),snapshot=>{
+    callback(snapshot.docs.map(d=>({id:d.id,...d.data()})));
+  },error=>{
+    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{detail:{message:error.message || String(error)}}));
+  });
+}
+
 async function getFamilyStates(){
   requireUser();
   const context=await getFamilyContext();
@@ -581,6 +591,7 @@ globalThis.StopGastosCloud={
   watchFamilyInvitations,
   respondFamilyInvitation,
   getFamilyContext,
+  watchFamilyMembers,
   getFamilyStates,
   removeFamilyMember,
   leaveFamily,

@@ -22,6 +22,8 @@ import {
   getDocs,
   deleteDoc,
   onSnapshot,
+  query,
+  where,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 import {
@@ -69,6 +71,44 @@ function randomCode(){
   const bytes=crypto.getRandomValues(new Uint8Array(10));
   return Array.from(bytes,b=>alphabet[b%alphabet.length]).join('');
 }
+
+
+function normalizeEmail(value){
+  return String(value || '').trim().toLowerCase();
+}
+
+async function emailDirectoryKey(email){
+  const bytes=new TextEncoder().encode(normalizeEmail(email));
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function registerDirectoryEntry(){
+  requireUser();
+  const email=normalizeEmail(currentUser.email);
+  if(!email) return;
+  const key=await emailDirectoryKey(email);
+  await setDoc(doc(db,'userDirectory',key),{
+    uid:currentUser.uid,
+    email,
+    displayName:currentUser.displayName || '',
+    photoURL:currentUser.photoURL || '',
+    updatedAt:serverTimestamp()
+  },{merge:true});
+}
+
+async function findUserByEmail(email){
+  requireUser();
+  const normalized=normalizeEmail(email);
+  if(!normalized) return null;
+  const key=await emailDirectoryKey(normalized);
+  const snap=await getDoc(doc(db,'userDirectory',key));
+  if(!snap.exists()) return null;
+  const data=snap.data() || {};
+  if(normalizeEmail(data.email)!==normalized) return null;
+  return data;
+}
+
 
 async function setup(){
   if(!configured){
@@ -161,12 +201,13 @@ async function ensureOwnProfile(){
   await setDoc(ref,{
     uid:currentUser.uid,
     displayName:currentUser.displayName || existing.displayName || '',
-    email:currentUser.email || existing.email || '',
+    email:normalizeEmail(currentUser.email || existing.email || ''),
     photoURL:currentUser.photoURL || existing.photoURL || '',
     familyId:existing.familyId || '',
     role:existing.role || '',
     updatedAt:serverTimestamp()
   },{merge:true});
+  await registerDirectoryEntry();
 }
 
 async function getOwnProfile(){
@@ -234,10 +275,12 @@ async function createFamily(name){
   await setDoc(doc(db,'families',familyId,'members',currentUser.uid),{
     uid:currentUser.uid,
     displayName:currentUser.displayName || '',
-    email:currentUser.email || '',
+    email:normalizeEmail(currentUser.email),
     photoURL:currentUser.photoURL || '',
     role:'admin',
-    joinedAt:serverTimestamp()
+    status:'active',
+    joinedAt:serverTimestamp(),
+    updatedAt:serverTimestamp()
   });
   await setDoc(profileRef(),{familyId,role:'admin',updatedAt:serverTimestamp()},{merge:true});
 
@@ -245,57 +288,153 @@ async function createFamily(name){
 }
 
 async function createFamilyInvite(){
-  requireUser();
-  const profile=await getOwnProfile();
-  if(!profile?.familyId || profile.role!=='admin') throw new Error('Apenas o administrador pode gerar convites.');
-  const familySnap=await getDoc(doc(db,'families',profile.familyId));
-  if(!familySnap.exists()) throw new Error('Família não encontrada.');
-
-  const code=randomCode();
-  await setDoc(doc(db,'familyInvites',code),{
-    code,
-    familyId:profile.familyId,
-    familyName:familySnap.data().name || 'Família',
-    createdBy:currentUser.uid,
-    createdByName:currentUser.displayName || '',
-    active:true,
-    expiresAt:new Date(Date.now()+7*24*60*60*1000),
-    createdAt:serverTimestamp()
-  });
-  return code;
+  throw new Error('Convites por código foram substituídos por convites por e-mail.');
 }
 
-async function acceptFamilyInvite(code){
+async function acceptFamilyInvite(){
+  throw new Error('Use a notificação de convite enviada para sua conta.');
+}
+
+
+async function sendFamilyInviteByEmail(email){
   requireUser();
-  const clean=String(code || '').trim().toUpperCase();
-  if(!clean) throw new Error('Informe o código do convite.');
+  const context=await getFamilyContext();
+  if(!context.family || context.profile?.role!=='admin') throw new Error('Apenas o administrador pode convidar membros.');
 
-  const profile=await getOwnProfile();
-  if(profile?.familyId) throw new Error('Você já participa de uma família.');
+  const normalized=normalizeEmail(email);
+  if(!normalized) throw new Error('Informe o e-mail Google do membro.');
+  if(normalized===normalizeEmail(currentUser.email)) throw new Error('Você já é o administrador desta família.');
 
-  const inviteSnap=await getDoc(doc(db,'familyInvites',clean));
-  if(!inviteSnap.exists() || inviteSnap.data().active!==true) throw new Error('Convite inválido ou expirado.');
-  const invite=inviteSnap.data();
-  const expiresAt=invite.expiresAt && typeof invite.expiresAt.toDate==='function' ? invite.expiresAt.toDate() : new Date(invite.expiresAt || 0);
-  if(!expiresAt || expiresAt.getTime()<=Date.now()) throw new Error('Este convite expirou. Peça um novo código ao administrador.');
+  const target=await findUserByEmail(normalized);
+  if(!target?.uid) throw new Error('Essa conta ainda não entrou no Stop Gastos com esse e-mail.');
 
-  await setDoc(doc(db,'families',invite.familyId,'members',currentUser.uid),{
-    uid:currentUser.uid,
-    displayName:currentUser.displayName || '',
-    email:currentUser.email || '',
-    photoURL:currentUser.photoURL || '',
+  const memberRef=doc(db,'families',context.family.id,'members',target.uid);
+  const memberSnap=await getDoc(memberRef);
+  if(memberSnap.exists()){
+    const status=memberSnap.data().status || 'active';
+    if(status==='active') throw new Error('Essa pessoa já é membro ativo da família.');
+    if(status==='pending') throw new Error('Já existe um convite pendente para esse e-mail.');
+  }
+
+  const requestId=crypto.randomUUID ? crypto.randomUUID() : 'invite-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  const expiresAt=new Date(Date.now()+7*24*60*60*1000);
+
+  await setDoc(memberRef,{
+    uid:target.uid,
+    displayName:target.displayName || '',
+    email:normalized,
+    photoURL:target.photoURL || '',
     role:'member',
-    inviteCode:clean,
-    joinedAt:serverTimestamp()
-  });
-  await setDoc(profileRef(),{
-    familyId:invite.familyId,
-    role:'member',
+    status:'pending',
+    invitedBy:currentUser.uid,
+    invitedAt:serverTimestamp(),
     updatedAt:serverTimestamp()
   },{merge:true});
 
-  return getFamilyContext();
+  await setDoc(doc(db,'familyRequests',requestId),{
+    requestId,
+    familyId:context.family.id,
+    familyName:context.family.name || 'Família',
+    targetUid:target.uid,
+    targetEmail:normalized,
+    targetName:target.displayName || '',
+    targetPhotoURL:target.photoURL || '',
+    createdBy:currentUser.uid,
+    createdByName:currentUser.displayName || '',
+    status:'pending',
+    expiresAt,
+    createdAt:serverTimestamp(),
+    updatedAt:serverTimestamp()
+  });
+
+  return {requestId,target};
 }
+
+async function getFamilyInvitations(){
+  requireUser();
+  const q=query(collection(db,'familyRequests'),where('targetUid','==',currentUser.uid));
+  const snaps=await getDocs(q);
+  return snaps.docs
+    .map(d=>({id:d.id,...d.data()}))
+    .filter(item=>item.status==='pending')
+    .filter(item=>{
+      const expiry=item.expiresAt && typeof item.expiresAt.toDate==='function' ? item.expiresAt.toDate() : new Date(item.expiresAt || 0);
+      return !expiry || expiry.getTime()>Date.now();
+    });
+}
+
+function watchFamilyInvitations(callback){
+  requireUser();
+  const q=query(collection(db,'familyRequests'),where('targetUid','==',currentUser.uid));
+  return onSnapshot(q,snapshot=>{
+    const items=snapshot.docs
+      .map(d=>({id:d.id,...d.data()}))
+      .filter(item=>item.status==='pending')
+      .filter(item=>{
+        const expiry=item.expiresAt && typeof item.expiresAt.toDate==='function' ? item.expiresAt.toDate() : new Date(item.expiresAt || 0);
+        return !expiry || expiry.getTime()>Date.now();
+      });
+    callback(items);
+  },error=>{
+    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{detail:{message:error.message || String(error)}}));
+  });
+}
+
+async function respondFamilyInvitation(requestId,accept){
+  requireUser();
+  const requestRef=doc(db,'familyRequests',requestId);
+  const snap=await getDoc(requestRef);
+  if(!snap.exists()) throw new Error('Convite não encontrado.');
+
+  const invitation=snap.data();
+  if(invitation.targetUid!==currentUser.uid) throw new Error('Este convite pertence a outra conta.');
+  if(invitation.status!=='pending') throw new Error('Este convite já foi respondido.');
+
+  const expiry=invitation.expiresAt && typeof invitation.expiresAt.toDate==='function' ? invitation.expiresAt.toDate() : new Date(invitation.expiresAt || 0);
+  if(expiry && expiry.getTime()<=Date.now()) throw new Error('Este convite expirou.');
+
+  const memberRef=doc(db,'families',invitation.familyId,'members',currentUser.uid);
+
+  if(accept){
+    const profile=await getOwnProfile();
+    if(profile?.familyId && profile.familyId!==invitation.familyId) throw new Error('Você já participa de outra família.');
+
+    await setDoc(memberRef,{
+      uid:currentUser.uid,
+      displayName:currentUser.displayName || '',
+      email:normalizeEmail(currentUser.email),
+      photoURL:currentUser.photoURL || '',
+      role:'member',
+      status:'active',
+      joinedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    await setDoc(profileRef(),{
+      familyId:invitation.familyId,
+      role:'member',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    await setDoc(requestRef,{
+      status:'accepted',
+      respondedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+  }else{
+    await setDoc(memberRef,{
+      status:'inactive',
+      declinedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    await setDoc(requestRef,{
+      status:'declined',
+      respondedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+  }
+
+  return {accepted:!!accept,familyId:invitation.familyId};
+}
+
 
 async function getFamilyContext(){
   requireUser();
@@ -321,7 +460,8 @@ async function getFamilyStates(){
 
   const ownUid=currentUser.uid;
   const isAdmin=context.profile?.role==='admin';
-  const readable=isAdmin ? context.members : context.members.filter(m=>m.uid===ownUid);
+  const activeMembers=context.members.filter(m=>(m.status || 'active')==='active');
+  const readable=isAdmin ? activeMembers : activeMembers.filter(m=>m.uid===ownUid);
   const states={};
 
   await Promise.all(readable.map(async member=>{
@@ -402,6 +542,11 @@ globalThis.StopGastosCloud={
   createFamily,
   createFamilyInvite,
   acceptFamilyInvite,
+  findUserByEmail,
+  sendFamilyInviteByEmail,
+  getFamilyInvitations,
+  watchFamilyInvitations,
+  respondFamilyInvitation,
   getFamilyContext,
   getFamilyStates,
   removeFamilyMember,

@@ -1,0 +1,20 @@
+{
+  "currency": "BRL",
+  "locale": "pt-BR",
+  "monthlyBudget": 5000,
+  "autoLockMinutes": 10,
+  "categories": [
+    {"id":"moradia","name":"Moradia","icon":"🏠","color":"#7c5cff"},
+    {"id":"alimentacao","name":"Alimentação","icon":"🍽️","color":"#17c3b2"},
+    {"id":"transporte","name":"Transporte","icon":"🚗","color":"#ff9f1c"},
+    {"id":"saude","name":"Saúde","icon":"❤️","color":"#ff5d8f"},
+    {"id":"educacao","name":"Educação","icon":"📚","color":"#2d9cdb"},
+    {"id":"lazer","name":"Lazer","icon":"🎮","color":"#9b51e0"},
+    {"id":"assinaturas","name":"Assinaturas","icon":"📺","color":"#00b4d8"},
+    {"id":"compras","name":"Compras","icon":"🛍️","color":"#f15bb5"},
+    {"id":"dividas","name":"Dívidas","icon":"💳","color":"#ef476f"},
+    {"id":"investimentos","name":"Investimentos","icon":"📈","color":"#06d6a0"},
+    {"id":"salario","name":"Salário","icon":"💼","color":"#4caf50"},
+    {"id":"outros","name":"Outros","icon":"📦","color":"#8d99ae"}
+  ]
+}

@@ -1,8 +1,14 @@
-const CACHE = 'stop-gastos-v2';
+const CACHE = 'stop-gastos-v3';
 const CORE = ['./', './index.html', './styles.css', './app.js', './defaults.json', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)));
+  event.waitUntil(
+    caches.open(CACHE).then(cache =>
+      Promise.all(CORE.map(url => fetch(url, {cache:'reload'}).then(response => {
+        if (response && response.ok) return cache.put(url, response.clone());
+      }).catch(() => null)))
+    )
+  );
   self.skipWaiting();
 });
 
@@ -15,12 +21,22 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      if (!response || response.status !== 200 || response.type === 'opaque') return response;
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put(event.request, copy));
+    fetch(event.request, {cache:'no-store'}).then(response => {
+      if (response && response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      }
       return response;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(async () => {
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      if (event.request.mode === 'navigate') return caches.match('./index.html');
+      return Response.error();
+    })
   );
 });

@@ -812,3 +812,65 @@ input:focus,select:focus,textarea:focus{border-color:rgba(124,92,255,.55);box-sh
   .main{margin:0!important;padding:0!important}.view{display:none!important}#view-reports{display:block!important}
   body{background:#fff!important;color:#111!important}.panel,.insight-card{box-shadow:none!important;background:#fff!important;border:1px solid #ddd!important}
 }
+
+
+/* ===== Firebase cloud sync ===== */
+.cloud-entry{display:grid;gap:10px;margin:18px 0 10px}
+.btn.google{
+  background:#fff;color:#202124;border:1px solid rgba(60,64,67,.2);
+  box-shadow:0 8px 24px rgba(0,0,0,.12)
+}
+.btn.google:hover{background:#f7f8f8;transform:translateY(-1px)}
+.google-g{
+  display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
+  font-weight:900;font-family:Arial,sans-serif;color:#4285f4;background:#fff
+}
+.cloud-lock-status,.cloud-status-line{
+  display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px
+}
+.or-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:10px}
+.or-divider:before,.or-divider:after{content:"";height:1px;background:var(--line);flex:1}
+.sync-dot{
+  width:9px;height:9px;border-radius:50%;background:#7d879d;box-shadow:0 0 0 3px rgba(125,135,157,.12);
+  flex:0 0 auto
+}
+.sync-dot.synced{background:var(--income);box-shadow:0 0 0 3px rgba(39,214,162,.13)}
+.sync-dot.syncing{background:var(--warning);box-shadow:0 0 0 3px rgba(255,179,71,.13);animation:pulse 1.2s infinite}
+.sync-dot.offline{background:#8d99ae;box-shadow:0 0 0 3px rgba(141,153,174,.13)}
+.sync-dot.error{background:var(--danger);box-shadow:0 0 0 3px rgba(255,95,109,.13)}
+
+.cloud-status-btn{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);
+  border-radius:14px;padding:9px 11px;display:flex;align-items:center;gap:8px;
+  font-size:10px;font-weight:800;min-height:40px
+}
+.cloud-status-btn:hover{border-color:var(--line-strong);background:var(--panel-soft)}
+.cloud-settings{grid-column:1/-1;align-items:stretch!important;gap:16px!important}
+.cloud-account-head{display:flex!important;align-items:flex-start!important;gap:12px!important}
+.cloud-account-box{
+  width:100%;padding:14px;border:1px solid var(--line);background:var(--panel-soft);
+  border-radius:16px;display:grid;gap:14px
+}
+.cloud-user{display:flex;align-items:center;gap:12px}
+.cloud-user b,.cloud-user small{display:block}
+.cloud-user small{margin-top:3px;color:var(--muted);font-size:10px}
+.cloud-avatar{
+  width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+  font-weight:900;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;
+  background-position:center;background-size:cover;flex:0 0 auto
+}
+.cloud-avatar.has-photo{font-size:0}
+.cloud-actions{display:flex;flex-wrap:wrap;gap:8px}
+.cloud-status-line{
+  padding-top:10px;border-top:1px solid var(--line)
+}
+.cloud-actions .btn:disabled,.cloud-entry .btn:disabled{
+  opacity:.45;cursor:not-allowed;transform:none
+}
+
+@media(max-width:760px){
+  .cloud-status-btn span:last-child{display:none}
+  .cloud-status-btn{width:40px;justify-content:center;padding:0}
+  .cloud-actions{display:grid;grid-template-columns:1fr}
+  .cloud-actions .btn{width:100%}
+}

@@ -19,6 +19,8 @@ jobs:
         run: |
           node --check app.js
           node --check service-worker.js
+          node --check firebase-config.js
+          node --input-type=module --check < firebase-sync.js
       - name: Validate JSON files
         run: |
           python -m json.tool defaults.json > /dev/null
@@ -48,3 +50,7 @@ jobs:
           test -s favicon.svg
           test -s manifest.webmanifest
           test -s service-worker.js
+          test -s firebase-config.js
+          test -s firebase-sync.js
+          test -s firestore.rules
+          test -s FIREBASE_SETUP.md

@@ -1102,7 +1102,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 
 /* 1200px */
 @media(max-width:1200px){
-  :root{--sidebar-width:220px}
+  html{--sidebar-width:220px}
   .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .panel.span-2{grid-column:span 2}
@@ -1114,7 +1114,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 
 /* 900px */
 @media(max-width:900px){
-  :root{--sidebar-width:252px}
+  html{--sidebar-width:252px}
   .sidebar{
     width:min(82vw,280px);
     transform:translateX(calc(-100% - 18px));

@@ -89,6 +89,7 @@ service cloud.firestore {
             && request.resource.data.inviteCode is string
             && exists(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode))
             && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.active == true
+            && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.expiresAt > request.time
             && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.familyId == familyId
           )
           ||

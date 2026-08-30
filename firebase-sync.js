@@ -444,7 +444,16 @@ async function getFamilyContext(){
   const familySnap=await getDoc(doc(db,'families',profile.familyId));
   if(!familySnap.exists()) return {profile:{...profile,familyId:'',role:''},family:null,members:[]};
 
-  const memberSnaps=await getDocs(collection(db,'families',profile.familyId,'members'));
+  let memberSnaps;
+  if(profile.role==='admin'){
+    memberSnaps=await getDocs(collection(db,'families',profile.familyId,'members'));
+  }else{
+    memberSnaps=await getDocs(query(
+      collection(db,'families',profile.familyId,'members'),
+      where('status','==','active')
+    ));
+  }
+
   const members=memberSnaps.docs.map(d=>({id:d.id,...d.data()}));
   return {
     profile,

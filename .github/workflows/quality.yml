@@ -23,6 +23,23 @@ jobs:
         run: |
           python -m json.tool defaults.json > /dev/null
           python -m json.tool manifest.webmanifest > /dev/null
+      - name: Validate DOM bindings
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+          const ids = [...js.matchAll(/\$\('#([^']+)'\)/g)].map(m => m[1]);
+          const missing = [...new Set(ids)].filter(id => !html.includes('id="' + id + '"'));
+          const navs = [...html.matchAll(/data-nav="([^"]+)"/g)].map(m => m[1]);
+          const missingViews = [...new Set(navs)].filter(name => !html.includes('id="view-' + name + '"'));
+          if (missing.length || missingViews.length) {
+            console.error('Missing DOM ids:', missing);
+            console.error('Missing nav views:', missingViews);
+            process.exit(1);
+          }
+          console.log('DOM bindings OK:', new Set(ids).size, 'ids checked');
+          NODE
       - name: Check required files
         run: |
           test -s index.html

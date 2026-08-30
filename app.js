@@ -15,6 +15,12 @@ let pendingBackup = null;
 let pendingConfirm = null;
 let lockTimer = null;
 let defaultsCache = null;
+let cloudUser = null;
+let cloudVaultUnsubscribe = null;
+let cloudAuthUnsubscribe = null;
+let cloudPushTimer = null;
+let cloudApplying = false;
+let cloudLastSyncedAt = null;
 
 const fallbackCategories = [
   {id:'moradia',name:'Moradia',icon:'🏠',color:'#7c5cff'},
@@ -57,7 +63,9 @@ async function init(){
   $('#globalMonth').value = selectedMonth;
   bindEvents();
   bindV2Events();
+  bindCloudEvents();
   setupPwa();
+  handleCloudReady();
 
   const existing = localStorage.getItem(VAULT_KEY);
   if(existing){
@@ -264,6 +272,7 @@ function openApp(){
   applyTheme();
   syncSettingsFields();
   renderAll();
+  renderCloudUi();
   resetAutoLock();
 }
 
@@ -325,7 +334,9 @@ async function saveVault(){
     cipher:toB64(new Uint8Array(cipher)),
     updatedAt:new Date().toISOString()
   };
-  localStorage.setItem(VAULT_KEY,JSON.stringify(vault));
+  const vaultText=JSON.stringify(vault);
+  localStorage.setItem(VAULT_KEY,vaultText);
+  if(!cloudApplying) queueCloudPush(vaultText);
 }
 
 async function decryptVault(vault,pin){
@@ -1365,6 +1376,341 @@ function setRadio(name,value){ const el=$('input[name="'+name+'"][value="'+value
 function getRadio(name){ const el=$('input[name="'+name+'"]:checked'); return el?el.value:'expense'; }
 function esc(value){
   return String(value==null?'':value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch];});
+}
+
+
+
+function bindCloudEvents(){
+  const signInButtons=['googleLoginBtn','googleSettingsBtn'];
+  signInButtons.forEach(function(id){
+    const el=$('#'+id);
+    if(el) el.addEventListener('click',cloudSignIn);
+  });
+
+  const signOutBtn=$('#cloudSignOutBtn');
+  if(signOutBtn) signOutBtn.addEventListener('click',cloudSignOut);
+
+  const syncBtn=$('#cloudSyncNowBtn');
+  if(syncBtn) syncBtn.addEventListener('click',forceCloudSync);
+
+  const notificationsBtn=$('#enableNotificationsBtn');
+  if(notificationsBtn) notificationsBtn.addEventListener('click',enableCloudNotifications);
+
+  const statusBtn=$('#cloudStatusBtn');
+  if(statusBtn) statusBtn.addEventListener('click',function(){navigate('settings');});
+
+  window.addEventListener('stopgastos:cloud-ready',handleCloudReady);
+  window.addEventListener('stopgastos:cloud-error',function(e){
+    setCloudStatus('error',(e.detail && e.detail.message) || 'Falha na sincronização.');
+  });
+  window.addEventListener('stopgastos:notification',function(e){
+    const payload=e.detail || {};
+    const notification=payload.notification || {};
+    toast((notification.title ? notification.title+': ' : '')+(notification.body || 'Nova notificação financeira.'),'info');
+  });
+  window.addEventListener('online',function(){
+    if(cloudUser) forceCloudSync(false);
+  });
+  window.addEventListener('offline',function(){
+    if(cloudUser) setCloudStatus('offline','Offline · alterações ficam salvas localmente');
+  });
+}
+
+function handleCloudReady(){
+  const cloud=window.StopGastosCloud;
+  if(!cloud){
+    renderCloudUi();
+    return;
+  }
+
+  if(cloudAuthUnsubscribe){
+    try{cloudAuthUnsubscribe();}catch(err){}
+    cloudAuthUnsubscribe=null;
+  }
+
+  if(cloud.configured && cloud.ready){
+    cloudAuthUnsubscribe=cloud.onUserChanged(handleCloudUser);
+  }
+  renderCloudUi();
+}
+
+async function handleCloudUser(user){
+  cloudUser=user || null;
+
+  if(cloudVaultUnsubscribe){
+    try{cloudVaultUnsubscribe();}catch(err){}
+    cloudVaultUnsubscribe=null;
+  }
+
+  renderCloudUi();
+
+  const cloud=window.StopGastosCloud;
+  if(!cloudUser || !cloud || !cloud.ready) return;
+
+  setCloudStatus('syncing','Conectado · verificando base na nuvem');
+
+  cloudVaultUnsubscribe=cloud.watchVault(function(remote){
+    reconcileCloudVault(remote).catch(function(err){
+      setCloudStatus('error','Falha ao aplicar atualização da nuvem');
+    });
+  });
+
+  try{
+    const remote=await cloud.pullVault();
+    const local=localStorage.getItem(VAULT_KEY);
+
+    if(remote && remote.vault){
+      await reconcileCloudVault(remote);
+    }else if(local){
+      queueCloudPush(local,true);
+    }else{
+      setCloudStatus('synced','Conta conectada · crie um cofre para iniciar');
+    }
+  }catch(err){
+    setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Não foi possível consultar o Firebase':'Offline · usando cache local');
+  }
+}
+
+async function cloudSignIn(){
+  const cloud=window.StopGastosCloud;
+  if(!cloud || !cloud.configured){
+    toast('A integração Firebase ainda precisa receber a configuração do projeto.','info');
+    navigate('settings');
+    return;
+  }
+  try{
+    setCloudStatus('syncing','Abrindo login Google…');
+    await cloud.signInGoogle();
+  }catch(err){
+    if(err && err.code==='auth/unauthorized-domain'){
+      toast('O domínio do GitHub Pages precisa ser autorizado no Firebase Authentication.','error');
+    }else{
+      toast('Não foi possível entrar com Google: '+(err.message || 'erro desconhecido'),'error');
+    }
+    renderCloudUi();
+  }
+}
+
+async function cloudSignOut(){
+  const cloud=window.StopGastosCloud;
+  if(!cloud) return;
+  try{
+    await cloud.signOutGoogle();
+    cloudUser=null;
+    if(cloudVaultUnsubscribe){try{cloudVaultUnsubscribe();}catch(err){} cloudVaultUnsubscribe=null;}
+    renderCloudUi();
+    toast('Conta Google desconectada. O cofre local foi mantido.','success');
+  }catch(err){
+    toast('Não foi possível sair da conta Google.','error');
+  }
+}
+
+function queueCloudPush(vaultText,immediate){
+  const cloud=window.StopGastosCloud;
+  if(!vaultText || !cloud || !cloud.ready || !cloud.isSignedIn()) return;
+
+  clearTimeout(cloudPushTimer);
+  const run=async function(){
+    try{
+      setCloudStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'Sincronizando cofre criptografado…':'Offline · sincronização pendente');
+      await cloud.pushVault(vaultText);
+      cloudLastSyncedAt=new Date();
+      setCloudStatus('synced','Sincronizado agora');
+    }catch(err){
+      setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao enviar para o Firebase':'Offline · sincronização pendente');
+    }
+  };
+
+  if(immediate) run();
+  else cloudPushTimer=setTimeout(run,450);
+}
+
+async function forceCloudSync(showToast=true){
+  const cloud=window.StopGastosCloud;
+  if(!cloud || !cloud.configured){
+    if(showToast) toast('Firebase ainda não configurado.','info');
+    return;
+  }
+  if(!cloud.isSignedIn()){
+    if(showToast) await cloudSignIn();
+    return;
+  }
+
+  try{
+    setCloudStatus('syncing','Comparando dispositivo e nuvem…');
+    const remote=await cloud.pullVault();
+    await reconcileCloudVault(remote);
+
+    const local=localStorage.getItem(VAULT_KEY);
+    if(local){
+      const localTs=vaultTimestamp(local);
+      const remoteTs=remote && remote.vault ? vaultTimestamp(remote.vault) : 0;
+      if(!remote || !remote.vault || localTs>=remoteTs){
+        await cloud.pushVault(local);
+      }
+    }
+    cloudLastSyncedAt=new Date();
+    setCloudStatus('synced','Sincronização concluída');
+    if(showToast) toast('Cofre sincronizado com o Firebase.','success');
+  }catch(err){
+    setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · dados protegidos no cache local');
+    if(showToast) toast(navigator.onLine?'Não foi possível sincronizar agora.':'Sem internet. As alterações serão sincronizadas depois.','info');
+  }
+}
+
+async function reconcileCloudVault(remote){
+  if(!remote || !remote.vault) return;
+
+  const local=localStorage.getItem(VAULT_KEY);
+  const remoteTs=vaultTimestamp(remote.vault);
+  const localTs=local ? vaultTimestamp(local) : 0;
+
+  if(local && localTs>remoteTs){
+    if(!remote.hasPendingWrites) queueCloudPush(local);
+    return;
+  }
+
+  if(local && localTs===remoteTs){
+    if(!remote.hasPendingWrites){
+      cloudLastSyncedAt=new Date();
+      setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Cache Firebase disponível':'Sincronizado');
+    }
+    return;
+  }
+
+  cloudApplying=true;
+  try{
+    localStorage.setItem(VAULT_KEY,remote.vault);
+
+    if(appState && sessionKey){
+      try{
+        const vault=JSON.parse(remote.vault);
+        const data=await decryptVaultWithKey(vault,sessionKey);
+        appState=normalizeState(data);
+        sessionSalt=fromB64(vault.salt);
+        await persistSession();
+        renderAll();
+        toast('Alterações de outro dispositivo foram sincronizadas.','info');
+      }catch(err){
+        lockVault();
+        toast('Base atualizada pela nuvem. Digite seu PIN novamente para abrir a versão sincronizada.','info');
+      }
+    }else{
+      clearSessionCredentials();
+      $('#setupBox').hidden=true;
+      $('#unlockBox').hidden=false;
+      $('#unlockPin').value='';
+      const lock=$('#lockScreen');
+      if(lock) lock.hidden=false;
+      const shell=$('#appShell');
+      if(shell) shell.hidden=true;
+      toast('Cofre encontrado na sua conta Google. Digite o mesmo PIN para abri-lo.','success');
+    }
+
+    cloudLastSyncedAt=new Date();
+    setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base atualizada pela nuvem');
+  }finally{
+    cloudApplying=false;
+  }
+}
+
+function vaultTimestamp(vaultText){
+  try{
+    const value=JSON.parse(vaultText);
+    const time=Date.parse(value.updatedAt || '');
+    return Number.isFinite(time) ? time : 0;
+  }catch(err){
+    return 0;
+  }
+}
+
+async function enableCloudNotifications(){
+  const cloud=window.StopGastosCloud;
+  if(!cloud || !cloud.configured){
+    toast('Configure o Firebase antes de ativar notificações.','info');
+    return;
+  }
+  if(!cloud.isSignedIn()){
+    await cloudSignIn();
+    return;
+  }
+  try{
+    const result=await cloud.enableNotifications();
+    if(result && result.enabled){
+      $('#enableNotificationsBtn').textContent='🔔 Notificações ativas';
+      toast('Este dispositivo foi registrado para notificações.','success');
+    }
+  }catch(err){
+    toast(err.message || 'Não foi possível ativar notificações.','error');
+  }
+}
+
+function setCloudStatus(kind,message){
+  const ids=['cloudStatusDot','cloudSettingsDot'];
+  ids.forEach(function(id){
+    const el=$('#'+id);
+    if(el) el.className='sync-dot '+(kind || '');
+  });
+  const top=$('#cloudStatusText');
+  if(top){
+    top.textContent=kind==='synced'?'Sincronizado':kind==='syncing'?'Sincronizando':kind==='offline'?'Offline':kind==='error'?'Erro':'Local';
+  }
+  const settings=$('#cloudSettingsStatus');
+  if(settings) settings.textContent=message || '';
+  const lock=$('#cloudLockStatus');
+  if(lock){
+    const text=lock.querySelector('span:last-child');
+    if(text) text.textContent=message || 'Sincronização em nuvem opcional';
+    const dot=lock.querySelector('.sync-dot');
+    if(dot) dot.className='sync-dot '+(kind || '');
+  }
+}
+
+function renderCloudUi(){
+  const cloud=window.StopGastosCloud;
+  const configured=!!(cloud && cloud.configured);
+  const ready=!!(cloud && cloud.ready);
+  const user=cloudUser || (cloud && cloud.user) || null;
+
+  ['googleLoginBtn','googleSettingsBtn'].forEach(function(id){
+    const el=$('#'+id);
+    if(el){
+      el.disabled=!configured;
+      el.hidden=!!user;
+    }
+  });
+
+  const signOutBtn=$('#cloudSignOutBtn');
+  if(signOutBtn) signOutBtn.hidden=!user;
+  const syncBtn=$('#cloudSyncNowBtn');
+  if(syncBtn) syncBtn.disabled=!user;
+  const notificationsBtn=$('#enableNotificationsBtn');
+  if(notificationsBtn) notificationsBtn.disabled=!user || !configured;
+
+  const name=$('#cloudUserName');
+  const email=$('#cloudUserEmail');
+  const avatar=$('#cloudAvatar');
+  if(name) name.textContent=user ? (user.displayName || 'Conta Google') : 'Não conectado';
+  if(email) email.textContent=user ? (user.email || 'Conta sincronizada') : (configured?'Entre com Google para sincronizar.':'Firebase ainda não configurado.');
+  if(avatar){
+    avatar.textContent=user ? ((user.displayName || user.email || 'G').trim().charAt(0).toUpperCase()) : 'G';
+    avatar.style.backgroundImage=user && user.photoURL ? 'url("'+String(user.photoURL).replace(/"/g,'')+'")' : '';
+    avatar.classList.toggle('has-photo',!!(user && user.photoURL));
+  }
+
+  if(!configured){
+    setCloudStatus('local','Firebase aguardando configuração do projeto');
+  }else if(!ready){
+    setCloudStatus('syncing','Inicializando Firebase…');
+  }else if(!user){
+    setCloudStatus('local','Cofre local · entre com Google para sincronizar');
+  }else if(!navigator.onLine){
+    setCloudStatus('offline','Offline · alterações ficam no cache e serão sincronizadas');
+  }else if(cloudLastSyncedAt){
+    setCloudStatus('synced','Última sincronização '+cloudLastSyncedAt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+  }else{
+    setCloudStatus('syncing','Conta conectada · verificando nuvem');
+  }
 }
 
 

@@ -1,80 +1,107 @@
 # Stop Gastos
 
-Aplicação web responsiva para gestão financeira pessoal, criada em HTML, CSS e JavaScript puro.
+Aplicação web responsiva para gestão financeira pessoal e familiar, construída em HTML, CSS e JavaScript puro, hospedada no GitHub Pages e sincronizada com Firebase.
 
 ## Recursos
 
-### Stop Gastos 2.0
-- Dashboard diário, mensal e anual com alertas inteligentes
-- Score de saúde financeira e projeção de fluxo de caixa para 6 meses
+### Finanças pessoais
+- Dashboard mensal com receitas, despesas, saldo, média diária e comparativos
+- Score de saúde financeira e projeção de fluxo de caixa
 - Receitas e despesas por categoria, conta, tags e forma de pagamento
-- Contas/carteiras com saldo individual e consolidado
-- Transferências entre contas sem duplicar receitas ou despesas
-- Cartões de crédito com limite, fechamento e vencimento
-- Fatura mensal por cartão
-- Compras parceladas com valor total, quantidade de parcelas, valor por parcela e identificação 1/N, 2/N...
-- Projeção automática das parcelas futuras
-- Contas a pagar e receber com status pendente, vencido e pago
-- Ao marcar uma conta como paga, o lançamento financeiro é criado automaticamente
-- Custos fixos, receitas recorrentes e assinaturas com custo anual
+- Contas e carteiras com saldo individual e consolidado
+- Transferências entre contas
+- Cartões de crédito, limites, fechamento, vencimento e faturas
+- Compras parceladas com quantidade de parcelas, valor por parcela e projeção futura
+- Contas a pagar e receber
+- Custos fixos, receitas recorrentes e assinaturas
 - Orçamentos mensais por categoria
-- Categorias personalizáveis com ícone, cor e grupo financeiro
+- Categorias personalizadas
 - Metas financeiras
-- Calendário financeiro com lançamentos e vencimentos
-- Relatórios, indicadores, CSV e impressão/PDF
-- Busca por descrição, categoria, observação e tags
-- Modo privacidade para ocultar valores na tela
+- Calendário financeiro
+- Relatórios, CSV e impressão/PDF
+- Modo privacidade
 - Tema claro/escuro
-- PWA instalável e cache offline
-- Persistência local criptografada com Web Crypto (AES-GCM)
-- Exportação e importação de backup JSON criptografado
-- Migração automática dos cofres da versão anterior
-- Dados de demonstração opcionais
-- Layout moderno e responsivo para desktop e celular
+- PWA com cache offline
 
+### Conta Google e sincronização
+- Login somente com Google pelo Firebase Authentication
+- Sessão persistente após atualização da página
+- Cache local separado pelo UID Google
+- Cloud Firestore como fonte sincronizada entre computadores
+- Sincronização automática quando a conexão retorna
+- Indicador Local / Sincronizando / Sincronizado / Offline
 
-## Conta Google, Firebase e Família
+### Família
+- Um usuário cria a família e assume o papel de **Administrador**
+- O familiar precisa acessar o Stop Gastos pelo menos uma vez com a própria conta Google
+- O administrador informa o e-mail usado no login Google
+- O sistema localiza essa conta e cria um convite direcionado ao UID correto
+- O membro recebe uma notificação em tempo real dentro do Stop Gastos
+- O membro escolhe **Aceitar** ou **Recusar**
+- Aceitando: o vínculo passa para **Ativo**
+- Recusando: o vínculo familiar passa para **Inativo**
+- O membro registra somente os próprios gastos
+- O administrador visualiza o consolidado e os lançamentos dos membros ativos
+- Membros comuns não podem ler os dados financeiros de outros membros
+- O admin acompanha membros Ativos, Pendentes e Inativos
+- Sino de notificações com badge no topo do aplicativo
 
-O Stop Gastos agora usa **Google como autenticação principal**. Não há PIN para acessar o aplicativo.
+## Estrutura Firebase
 
-- Firebase Authentication mantém a sessão Google, inclusive após atualizar a página;
-- cada usuário possui um estado financeiro próprio no Firestore;
-- o cache local continua permitindo uso rápido e offline;
-- quando a conexão retorna, o Firebase sincroniza as alterações;
-- uma família pode ter um administrador e vários membros;
-- cada membro registra somente os próprios gastos;
-- o administrador pode ler e consolidar os dados financeiros dos membros da mesma família;
-- membros comuns não podem ler o estado financeiro de outros membros;
-- códigos de convite permitem entrar na família usando a própria conta Google;
-- Cloud Messaging continua preparado para notificações.
+- `userDirectory/{emailHash}`: diretório restrito para localizar uma conta por e-mail exato
+- `users/{uid}/profile/main`: perfil e vínculo familiar
+- `users/{uid}/state/main`: estado financeiro individual
+- `users/{uid}/devices/{deviceId}`: dispositivos e notificações
+- `families/{familyId}`: família
+- `families/{familyId}/members/{uid}`: vínculo, papel e status
+- `familyRequests/{requestId}`: convites direcionados
 
-Estrutura principal:
+## Estados do vínculo familiar
 
-- `users/{uid}/profile/main`: perfil, família e papel;
-- `users/{uid}/state/main`: dados financeiros daquele usuário;
-- `users/{uid}/devices/{deviceId}`: dispositivo/notificações;
-- `families/{familyId}`: conta família;
-- `families/{familyId}/members/{uid}`: membros e papéis;
-- `familyInvites/{code}`: códigos de convite.
+- `pending`: convite enviado e aguardando resposta
+- `active`: convite aceito
+- `inactive`: convite recusado ou vínculo desativado
 
-> Como o PIN foi removido, a autorização é feita por Google Authentication + regras do Firestore. O Firebase também protege os dados armazenados na infraestrutura, mas isso não é criptografia ponta a ponta com uma chave exclusiva conhecida apenas pelo usuário.
+O status inativo é referente ao **vínculo com a família**. Ele não desativa a conta Google/Firebase do usuário.
 
 ## Segurança
-O Stop Gastos é uma aplicação estática. Nenhuma credencial do GitHub é incluída no navegador. Os dados financeiros são criptografados localmente antes de serem gravados no armazenamento do navegador.
 
-> Atenção: não esqueça o PIN criado no primeiro acesso. Sem ele, não há como descriptografar o cofre local nem os backups exportados.
+A autenticação é feita pelo Google/Firebase Authentication.
+
+As regras do Cloud Firestore garantem que:
+- cada usuário grava somente o próprio estado financeiro;
+- somente o administrador da família pode ler os estados financeiros de outros membros ativos;
+- o diretório de e-mails não pode ser listado;
+- a busca de usuário é feita por consulta direta ao hash do e-mail informado;
+- somente o destinatário pode aceitar ou recusar o próprio convite;
+- demais caminhos são bloqueados.
+
+O modelo anterior com PIN/AES-GCM foi removido do fluxo normal. O código mantém apenas uma rotina de migração de melhor esforço para dados antigos que ainda possam existir no navegador.
+
+## Interface
+
+A interface atual possui:
+- navegação com ícones SVG consistentes;
+- animações e transições com suporte a `prefers-reduced-motion`;
+- sidebar desktop e menu móvel;
+- barra inferior otimizada para celular com acesso direto à Família;
+- cards e grids responsivos;
+- painel familiar redesenhado;
+- notificações de convite responsivas;
+- melhorias em tabelas e rolagem mobile.
 
 ## GitHub Pages
-O projeto inclui workflow em `.github/workflows/pages.yml` para publicação no GitHub Pages.
 
-## Estrutura
-- `index.html`: interface
-- `styles.css`: layout, tema, responsividade e animações
-- `app.js`: regras financeiras, dashboard, gráficos, cofre criptografado e PWA
-- `defaults.json`: categorias e preferências iniciais
+O projeto inclui workflow em `.github/workflows/pages.yml` para publicação automática no GitHub Pages.
+
+## Arquivos principais
+
+- `index.html`: interface e ícones SVG
+- `styles.css`: layout, temas, animações e responsividade
+- `app.js`: lógica financeira, cache, família e interface
+- `firebase-config.js`: configuração pública do Firebase
+- `firebase-sync.js`: Authentication, Firestore, família e notificações
+- `firestore.rules`: regras de segurança
+- `FIREBASE_SETUP.md`: configuração do Firebase Console
+- `service-worker.js`: PWA, cache e preparação para FCM
 - `manifest.webmanifest`: manifesto PWA
-- `service-worker.js`: cache offline
-- `favicon.svg`: ícone do app
-
-## Privacidade
-Os dados permanecem no dispositivo do usuário. O repositório contém apenas o código da aplicação, não os seus lançamentos pessoais.

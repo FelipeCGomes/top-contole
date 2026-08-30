@@ -1,68 +1,82 @@
 # Configuração do Firebase — Stop Gastos
 
-O Stop Gastos usa uma estratégia local-first:
+## Arquitetura atual
 
-1. O cofre é criptografado no navegador com AES-GCM.
-2. O JSON criptografado continua salvo localmente para abrir rápido e funcionar offline.
-3. Quando o usuário entra com Google, o mesmo cofre criptografado é sincronizado no Cloud Firestore.
-4. Em outro computador, o usuário entra com a mesma conta Google, baixa o cofre e informa o mesmo PIN para descriptografá-lo.
-5. O Firestore também usa cache persistente no navegador e sincroniza novamente quando a internet volta.
+O Stop Gastos usa **Google Authentication + Cloud Firestore + cache local**.
 
-## 1. Criar o projeto
+O PIN foi removido. A conta Google é a identidade do usuário e o Firestore aplica as permissões por UID e papel familiar.
 
-No Firebase Console:
+### Estrutura de dados
 
-- Crie um projeto para o Stop Gastos.
-- Adicione um aplicativo **Web**.
-- Copie o objeto `firebaseConfig`.
+- `users/{uid}/profile/main`
+  - nome, e-mail, família e papel
+- `users/{uid}/state/main`
+  - estado financeiro pessoal
+- `users/{uid}/devices/{deviceId}`
+  - tokens de notificação
+- `families/{familyId}`
+  - informações da família
+- `families/{familyId}/members/{uid}`
+  - membros, papel `admin` ou `member`
+- `familyInvites/{code}`
+  - convite para ingressar na família
 
-Edite `firebase-config.js` e preencha:
+## 1. Authentication
 
-- apiKey
-- authDomain
-- projectId
-- storageBucket
-- messagingSenderId
-- appId
+Firebase Console > Authentication > Sign-in method:
 
-A configuração Web do Firebase é informação de identificação do cliente. **Nunca** coloque service accounts, chaves privadas ou credenciais administrativas no repositório.
+- habilite **Google**;
+- em Authorized domains, inclua `felipecgomes.github.io`.
 
-## 2. Login Google
+A persistência usada no frontend é `browserLocalPersistence`, portanto atualizar a página não deve encerrar a sessão Google.
 
-Firebase Console > Authentication:
+## 2. Cloud Firestore
 
-- Ative o provedor **Google**.
-- Em Authorized domains, adicione:
-  - `felipecgomes.github.io`
-  - `localhost` para desenvolvimento local, se necessário.
+Firebase Console > Firestore Database > Rules.
 
-O Google identifica o usuário. O PIN do Stop Gastos continua sendo necessário para descriptografar o cofre financeiro.
+Substitua as regras de teste pelo conteúdo do arquivo `firestore.rules` deste repositório e clique em **Publish**.
 
-## 3. Cloud Firestore
+As regras atuais garantem:
 
-Crie o Cloud Firestore e publique o conteúdo de `firestore.rules`.
+- usuário lê e grava o próprio estado;
+- membro comum não lê o estado de outro membro;
+- administrador pode ler os estados financeiros dos membros da própria família;
+- somente administrador gerencia membros e convites;
+- um convite válido permite que o próprio usuário crie sua associação como membro;
+- outros caminhos ficam bloqueados.
 
-Estrutura utilizada:
+## 3. Conta Família
 
-- `users/{uid}/vault/main`: cofre financeiro criptografado
-- `users/{uid}/devices/{deviceId}`: token do dispositivo para notificações
+Fluxo do administrador:
 
-As regras impedem que um usuário leia os documentos de outro usuário.
+1. entrar com Google;
+2. abrir **Família**;
+3. criar uma família;
+4. gerar um código de convite;
+5. enviar o código ao familiar.
 
-## 4. Notificações Web
+Fluxo do membro:
+
+1. entrar com a própria conta Google;
+2. abrir **Família**;
+3. informar o código;
+4. registrar os próprios gastos normalmente.
+
+O painel do administrador consolida receitas, despesas, saldo, gastos por membro e lançamentos recentes.
+
+## 4. Cloud Messaging
 
 Firebase Console > Project settings > Cloud Messaging > Web Push certificates:
 
-- Gere/importe uma chave Web Push.
-- Copie a chave pública VAPID.
-- Preencha `STOP_GASTOS_FIREBASE_VAPID_KEY` em `firebase-config.js`.
+- gere uma chave pública VAPID;
+- coloque-a em `STOP_GASTOS_FIREBASE_VAPID_KEY` dentro de `firebase-config.js`.
 
-O GitHub Pages já usa HTTPS, requisito para notificações push e service workers.
+Nunca coloque service account, private key ou credencial administrativa no frontend.
 
-Nesta etapa, o app registra o dispositivo no Firebase Cloud Messaging e recebe mensagens em primeiro e segundo plano. O disparo automático por vencimento será implementado com uma função backend separada, para não colocar credenciais administrativas no navegador.
+## 5. Migração do modelo antigo com PIN
 
-## 5. Segurança
+O código mantém uma rotina de migração de melhor esforço para o antigo cofre AES-GCM.
 
-O Firestore recebe o cofre criptografado, e não as despesas/receitas em texto puro.
+Se a chave temporária da versão anterior ainda existir no navegador, a migração para o novo estado Google-only é feita automaticamente. O cofre antigo não é apagado automaticamente.
 
-Mesmo com as regras do Firestore, não remova a criptografia local. Ela funciona como uma segunda camada de proteção caso a base cloud seja acessada indevidamente.
+Backups antigos criptografados por PIN não são restaurados pelo novo fluxo JSON sem uma etapa específica de migração.

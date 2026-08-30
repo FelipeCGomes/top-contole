@@ -30,6 +30,7 @@ let familyStates = {};
 let familyStateUnsubs = [];
 let familyInvitations = [];
 let familyInviteUnsubscribe = null;
+let familyMembersUnsubscribe = null;
 let notifiedFamilyInvites = new Set();
 
 const fallbackCategories = [
@@ -1783,6 +1784,30 @@ function clearFamilyWatchers(){
     try{familyInviteUnsubscribe();}catch(err){}
     familyInviteUnsubscribe=null;
   }
+  if(familyMembersUnsubscribe){
+    try{familyMembersUnsubscribe();}catch(err){}
+    familyMembersUnsubscribe=null;
+  }
+}
+
+function rebuildFamilyStateWatchers(members,cloud){
+  familyStateUnsubs.forEach(function(unsub){try{unsub();}catch(err){}});
+  familyStateUnsubs=[];
+
+  if(familyContext?.profile?.role!=='admin') return;
+
+  (members || [])
+    .filter(member=>(member.status || 'active')==='active')
+    .forEach(function(member){
+      if(member.uid===cloudUser?.uid) return;
+      try{
+        const unsub=cloud.watchState(function(remote){
+          familyStates[member.uid]=remote;
+          renderFamily();
+        },member.uid);
+        familyStateUnsubs.push(unsub);
+      }catch(err){}
+    });
 }
 
 async function refreshFamilyData(){
@@ -1808,19 +1833,25 @@ async function refreshFamilyData(){
       });
     });
 
-    if(familyContext?.profile?.role==='admin'){
-      (familyContext.members || [])
-        .filter(member=>(member.status || 'active')==='active')
-        .forEach(function(member){
-          if(member.uid===cloudUser.uid) return;
-          try{
-            const unsub=cloud.watchState(function(remote){
-              familyStates[member.uid]=remote;
-              renderFamily();
-            },member.uid);
-            familyStateUnsubs.push(unsub);
-          }catch(err){}
+    if(familyContext?.profile?.role==='admin' && familyContext?.family?.id){
+      rebuildFamilyStateWatchers(familyContext.members || [],cloud);
+
+      familyMembersUnsubscribe=cloud.watchFamilyMembers(familyContext.family.id,function(members){
+        const before=new Map((familyContext.members || []).map(m=>[m.uid,m.status || 'active']));
+        familyContext={...familyContext,members:members || []};
+
+        const changed=(members || []).find(function(member){
+          return before.has(member.uid) && before.get(member.uid)!==(member.status || 'active');
         });
+
+        rebuildFamilyStateWatchers(members,cloud);
+        renderFamily();
+
+        if(changed){
+          const label=changed.status==='active'?'aceitou o convite':changed.status==='declined'?'recusou o convite':'atualizou o vínculo';
+          toast((changed.email || changed.displayName || 'Um membro')+' '+label+'.','info');
+        }
+      });
     }
 
     renderFamily();
@@ -1921,7 +1952,7 @@ async function respondFamilyInvitationFromUi(requestId,accept){
   const action=accept?'Aceitar convite?':'Recusar convite?';
   const message=accept
     ? 'Você passará a fazer parte de '+(invite.familyName || 'esta família')+' e o administrador poderá visualizar seus dados financeiros.'
-    : 'O vínculo com '+(invite.familyName || 'esta família')+' será marcado como inativo.';
+    : 'Você não entrará em '+(invite.familyName || 'esta família')+'. O administrador verá este e-mail com o status Recusado.';
 
   const ok=await confirmDialog(action,message);
   if(!ok) return;
@@ -1930,8 +1961,13 @@ async function respondFamilyInvitationFromUi(requestId,accept){
     await cloud.respondFamilyInvitation(requestId,accept);
     notifiedFamilyInvites.delete(requestId);
     await refreshFamilyData();
-    toast(accept?'Convite aceito. Bem-vindo à família.':'Convite recusado. O vínculo foi marcado como inativo.','success');
-    if(accept) navigate('family');
+    toast(
+      accept
+        ? 'Convite aceito. Você agora é membro da família.'
+        : 'Convite recusado. O administrador receberá o retorno como Recusado.',
+      'success'
+    );
+    navigate('family');
   }catch(err){
     toast(err.message || 'Não foi possível responder ao convite.','error');
   }
@@ -2040,7 +2076,14 @@ function renderFamily(){
     : 'Registre seus gastos normalmente. O administrador acompanha o consolidado familiar.';
   $('#familyRoleBadge').textContent=isAdmin?'Administrador':'Membro';
 
-  const allMembers=context.members || [];
+  const statusOrder={active:0,pending:1,declined:2};
+  const allMembers=[...(context.members || [])].sort(function(a,b){
+    if(a.uid===context.family.ownerUid) return -1;
+    if(b.uid===context.family.ownerUid) return 1;
+    const sa=statusOrder[a.status || 'active'] ?? 9;
+    const sb=statusOrder[b.status || 'active'] ?? 9;
+    return sa-sb || String(a.email || '').localeCompare(String(b.email || ''));
+  });
   const activeMembers=allMembers.filter(m=>(m.status || 'active')==='active');
   $('#familyMemberCount').textContent=String(activeMembers.length);
   $('#familyInvitePanel').hidden=!isAdmin;
@@ -2075,13 +2118,18 @@ function renderFamily(){
     const status=member.status || 'active';
     const canRemove=isAdmin && !isSelf && member.uid!==context.family.ownerUid;
     const initial=(member.displayName || member.email || '?').trim().charAt(0).toUpperCase();
-    const statusLabel=status==='pending'?'Aguardando':status==='inactive'?'Inativo':'Ativo';
-    const statusClass=status==='pending'?'pending':status==='inactive'?'inactive':'active';
+    const statusLabel=status==='pending'?'Pendente':status==='declined'?'Recusado':'Ativo';
+    const statusClass=status==='pending'?'pending':status==='declined'?'declined':'active';
+    const responseText=status==='declined'
+      ? ' · recusado'+familyResponseTime(member.declinedAt)
+      : status==='pending'
+        ? ' · aguardando resposta'
+        : '';
 
     return '<div class="family-member-row '+statusClass+'">'+
       '<div class="family-mini-avatar">'+escapeHtml(initial)+'</div>'+
       '<div class="family-member-info"><b>'+escapeHtml(member.displayName || member.email || 'Membro')+'</b>'+
-      '<small>'+escapeHtml(member.email || '')+(isSelf?' · você':'')+'</small></div>'+
+      '<small>'+escapeHtml(member.email || '')+(isSelf?' · você':'')+responseText+'</small></div>'+
       '<span class="member-status '+statusClass+'">'+statusLabel+'</span>'+
       (canRemove?'<button class="row-btn member-remove" data-remove-member="'+escapeHtml(member.uid)+'" title="Remover vínculo">×</button>':'')+
     '</div>';
@@ -2100,6 +2148,21 @@ function renderFamily(){
   }
 
   renderFamilyNotifications();
+}
+
+function familyResponseTime(value){
+  if(!value) return '';
+  try{
+    const date=typeof value.toDate==='function'
+      ? value.toDate()
+      : value.seconds
+        ? new Date(value.seconds*1000)
+        : new Date(value);
+    if(!Number.isFinite(date.getTime())) return '';
+    return ' em '+date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' às '+date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }catch(err){
+    return '';
+  }
 }
 
 function getCategoryFromState(id,uid){

@@ -32,6 +32,28 @@ Aplicação web responsiva para gestão financeira pessoal, criada em HTML, CSS 
 - Dados de demonstração opcionais
 - Layout moderno e responsivo para desktop e celular
 
+
+## Sincronização Firebase
+
+O Stop Gastos suporta uma arquitetura **local-first + nuvem**:
+
+- o cofre continua criptografado com AES-GCM no navegador;
+- o cache local permite uso rápido e offline;
+- login Google identifica o proprietário da base;
+- Cloud Firestore sincroniza o cofre criptografado entre computadores;
+- ao abrir em um computador novo, entre com a mesma conta Google e use o mesmo PIN;
+- Firebase Cloud Messaging registra os dispositivos para notificações;
+- nenhuma service account ou chave administrativa fica no frontend.
+
+Arquivos da integração:
+
+- `firebase-config.js`: configuração pública do app Web e chave pública VAPID;
+- `firebase-sync.js`: Google Auth, cache Firestore, sincronização e registro FCM;
+- `firestore.rules`: regras que isolam os documentos por `uid`;
+- `FIREBASE_SETUP.md`: instruções para ativar a integração no Firebase Console.
+
+> Enquanto `firebase-config.js` estiver sem os dados do projeto, o Stop Gastos continua funcionando normalmente em modo local.
+
 ## Segurança
 O Stop Gastos é uma aplicação estática. Nenhuma credencial do GitHub é incluída no navegador. Os dados financeiros são criptografados localmente antes de serem gravados no armazenamento do navegador.
 

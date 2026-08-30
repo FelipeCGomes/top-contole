@@ -259,6 +259,7 @@ async function createFamilyInvite(){
     createdBy:currentUser.uid,
     createdByName:currentUser.displayName || '',
     active:true,
+    expiresAt:new Date(Date.now()+7*24*60*60*1000),
     createdAt:serverTimestamp()
   });
   return code;
@@ -275,6 +276,8 @@ async function acceptFamilyInvite(code){
   const inviteSnap=await getDoc(doc(db,'familyInvites',clean));
   if(!inviteSnap.exists() || inviteSnap.data().active!==true) throw new Error('Convite inválido ou expirado.');
   const invite=inviteSnap.data();
+  const expiresAt=invite.expiresAt && typeof invite.expiresAt.toDate==='function' ? invite.expiresAt.toDate() : new Date(invite.expiresAt || 0);
+  if(!expiresAt || expiresAt.getTime()<=Date.now()) throw new Error('Este convite expirou. Peça um novo código ao administrador.');
 
   await setDoc(doc(db,'families',invite.familyId,'members',currentUser.uid),{
     uid:currentUser.uid,

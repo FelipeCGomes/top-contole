@@ -33,26 +33,31 @@ Aplicação web responsiva para gestão financeira pessoal, criada em HTML, CSS 
 - Layout moderno e responsivo para desktop e celular
 
 
-## Sincronização Firebase
+## Conta Google, Firebase e Família
 
-O Stop Gastos suporta uma arquitetura **local-first + nuvem**:
+O Stop Gastos agora usa **Google como autenticação principal**. Não há PIN para acessar o aplicativo.
 
-- o cofre continua criptografado com AES-GCM no navegador;
-- o cache local permite uso rápido e offline;
-- login Google identifica o proprietário da base;
-- Cloud Firestore sincroniza o cofre criptografado entre computadores;
-- ao abrir em um computador novo, entre com a mesma conta Google e use o mesmo PIN;
-- Firebase Cloud Messaging registra os dispositivos para notificações;
-- nenhuma service account ou chave administrativa fica no frontend.
+- Firebase Authentication mantém a sessão Google, inclusive após atualizar a página;
+- cada usuário possui um estado financeiro próprio no Firestore;
+- o cache local continua permitindo uso rápido e offline;
+- quando a conexão retorna, o Firebase sincroniza as alterações;
+- uma família pode ter um administrador e vários membros;
+- cada membro registra somente os próprios gastos;
+- o administrador pode ler e consolidar os dados financeiros dos membros da mesma família;
+- membros comuns não podem ler o estado financeiro de outros membros;
+- códigos de convite permitem entrar na família usando a própria conta Google;
+- Cloud Messaging continua preparado para notificações.
 
-Arquivos da integração:
+Estrutura principal:
 
-- `firebase-config.js`: configuração pública do app Web e chave pública VAPID;
-- `firebase-sync.js`: Google Auth, cache Firestore, sincronização e registro FCM;
-- `firestore.rules`: regras que isolam os documentos por `uid`;
-- `FIREBASE_SETUP.md`: instruções para ativar a integração no Firebase Console.
+- `users/{uid}/profile/main`: perfil, família e papel;
+- `users/{uid}/state/main`: dados financeiros daquele usuário;
+- `users/{uid}/devices/{deviceId}`: dispositivo/notificações;
+- `families/{familyId}`: conta família;
+- `families/{familyId}/members/{uid}`: membros e papéis;
+- `familyInvites/{code}`: códigos de convite.
 
-> Enquanto `firebase-config.js` estiver sem os dados do projeto, o Stop Gastos continua funcionando normalmente em modo local.
+> Como o PIN foi removido, a autorização é feita por Google Authentication + regras do Firestore. O Firebase também protege os dados armazenados na infraestrutura, mas isso não é criptografia ponta a ponta com uma chave exclusiva conhecida apenas pelo usuário.
 
 ## Segurança
 O Stop Gastos é uma aplicação estática. Nenhuma credencial do GitHub é incluída no navegador. Os dados financeiros são criptografados localmente antes de serem gravados no armazenamento do navegador.

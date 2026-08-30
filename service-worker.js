@@ -1,5 +1,64 @@
-const CACHE = 'stop-gastos-v3';
-const CORE = ['./', './index.html', './styles.css', './app.js', './defaults.json', './manifest.webmanifest', './favicon.svg'];
+const CACHE = 'stop-gastos-v4';
+const CORE = [
+  './',
+  './index.html',
+  './styles.css',
+  './app.js',
+  './firebase-config.js',
+  './firebase-sync.js',
+  './defaults.json',
+  './manifest.webmanifest',
+  './favicon.svg'
+];
+
+try {
+  importScripts('./firebase-config.js');
+  const config = self.STOP_GASTOS_FIREBASE_CONFIG || {};
+  const configured = ['apiKey','authDomain','projectId','messagingSenderId','appId']
+    .every(key => String(config[key] || '').trim());
+
+  if (configured) {
+    importScripts(
+      'https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js'
+    );
+
+    firebase.initializeApp(config);
+    const messaging = firebase.messaging();
+
+    messaging.onBackgroundMessage(payload => {
+      const notification = payload.notification || {};
+      const data = payload.data || {};
+      const title = notification.title || data.title || 'Stop Gastos';
+      const options = {
+        body: notification.body || data.body || 'Você tem uma atualização financeira.',
+        icon: './favicon.svg',
+        badge: './favicon.svg',
+        tag: data.tag || 'stop-gastos-finance',
+        data: { url: data.url || './' }
+      };
+      self.registration.showNotification(title, options);
+    });
+  }
+} catch (error) {
+  // O PWA continua funcionando normalmente mesmo antes do Firebase ser configurado.
+}
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if ('focus' in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      return clients.openWindow ? clients.openWindow(target) : undefined;
+    })
+  );
+});
 
 self.addEventListener('install', event => {
   event.waitUntil(

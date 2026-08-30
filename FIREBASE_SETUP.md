@@ -1,82 +1,103 @@
 # Configuração do Firebase — Stop Gastos
 
-## Arquitetura atual
+## Arquitetura
 
-O Stop Gastos usa **Google Authentication + Cloud Firestore + cache local**.
+O Stop Gastos usa:
 
-O PIN foi removido. A conta Google é a identidade do usuário e o Firestore aplica as permissões por UID e papel familiar.
+- Firebase Authentication com Google
+- Cloud Firestore
+- cache local por UID
+- PWA / Service Worker
+- Firebase Cloud Messaging preparado para Web Push
 
-### Estrutura de dados
-
-- `users/{uid}/profile/main`
-  - nome, e-mail, família e papel
-- `users/{uid}/state/main`
-  - estado financeiro pessoal
-- `users/{uid}/devices/{deviceId}`
-  - tokens de notificação
-- `families/{familyId}`
-  - informações da família
-- `families/{familyId}/members/{uid}`
-  - membros, papel `admin` ou `member`
-- `familyInvites/{code}`
-  - convite para ingressar na família
+Não há PIN no fluxo atual.
 
 ## 1. Authentication
 
 Firebase Console > Authentication > Sign-in method:
 
-- habilite **Google**;
-- em Authorized domains, inclua `felipecgomes.github.io`.
+1. habilite **Google**;
+2. em **Authorized domains**, inclua `felipecgomes.github.io`.
 
-A persistência usada no frontend é `browserLocalPersistence`, portanto atualizar a página não deve encerrar a sessão Google.
+O frontend usa `browserLocalPersistence`, portanto atualizar a página não deve encerrar a sessão Google.
 
-## 2. Cloud Firestore
+## 2. Firestore Rules
 
 Firebase Console > Firestore Database > Rules.
 
-Substitua as regras de teste pelo conteúdo do arquivo `firestore.rules` deste repositório e clique em **Publish**.
+Substitua as regras atuais pelo conteúdo completo de `firestore.rules` e clique em **Publish**.
 
-As regras atuais garantem:
+Isso é obrigatório para o fluxo familiar por e-mail funcionar.
 
-- usuário lê e grava o próprio estado;
-- membro comum não lê o estado de outro membro;
-- administrador pode ler os estados financeiros dos membros da própria família;
-- somente administrador gerencia membros e convites;
-- um convite válido permite que o próprio usuário crie sua associação como membro;
-- outros caminhos ficam bloqueados.
+As regras implementam:
+- estado financeiro individual por UID;
+- leitura familiar apenas para administrador;
+- vínculo familiar com status `pending`, `active` e `inactive`;
+- convite direcionado ao UID do destinatário;
+- diretório de e-mails sem permissão de listagem;
+- bloqueio de todos os caminhos não autorizados.
 
-## 3. Conta Família
+## 3. Diretório de usuários por e-mail
 
-Fluxo do administrador:
+Quando um usuário entra no Stop Gastos com Google, o aplicativo registra uma entrada em:
 
-1. entrar com Google;
-2. abrir **Família**;
-3. criar uma família;
-4. gerar um código de convite;
-5. enviar o código ao familiar.
+`userDirectory/{sha256(email)}`
 
-Fluxo do membro:
+O administrador informa o e-mail exato usado no login.
 
-1. entrar com a própria conta Google;
-2. abrir **Família**;
-3. informar o código;
-4. registrar os próprios gastos normalmente.
+O aplicativo:
+1. normaliza o e-mail;
+2. calcula SHA-256;
+3. busca somente aquele documento;
+4. confirma que o e-mail retornado é exatamente o solicitado;
+5. obtém o UID da conta;
+6. envia o convite.
 
-O painel do administrador consolida receitas, despesas, saldo, gastos por membro e lançamentos recentes.
+O Firestore não permite listar a coleção inteira do diretório.
 
-## 4. Cloud Messaging
+Por isso, a pessoa precisa ter acessado o Stop Gastos ao menos uma vez antes de ser localizada pelo administrador.
 
-Firebase Console > Project settings > Cloud Messaging > Web Push certificates:
+## 4. Fluxo Família
 
-- gere uma chave pública VAPID;
-- coloque-a em `STOP_GASTOS_FIREBASE_VAPID_KEY` dentro de `firebase-config.js`.
+### Administrador
+1. entra com Google;
+2. cria uma família;
+3. abre **Família**;
+4. informa o Gmail do membro;
+5. clica em **Enviar convite**;
+6. o vínculo é criado como `pending`.
+
+### Membro
+1. entra com a própria conta Google;
+2. recebe um aviso no sino e na página Família;
+3. escolhe **Aceitar** ou **Recusar**.
+
+Aceitar:
+- vínculo -> `active`;
+- perfil recebe `familyId`;
+- administrador passa a visualizar o estado financeiro do membro.
+
+Recusar:
+- vínculo -> `inactive`;
+- o usuário não entra na família;
+- a conta Google permanece normal e ativa.
+
+O admin pode reenviar um convite posteriormente para um vínculo inativo.
+
+## 5. Notificações
+
+O convite familiar é entregue em tempo real via listener do Firestore quando o Stop Gastos está aberto.
+
+Se o navegador já tiver permissão de notificações, o app também cria uma notificação local do navegador.
+
+Para receber push com o aplicativo totalmente fechado, ainda é necessário:
+- configurar a chave pública VAPID em `firebase-config.js`;
+- usar um backend confiável, como Cloud Functions, para disparar FCM.
 
 Nunca coloque service account, private key ou credencial administrativa no frontend.
 
-## 5. Migração do modelo antigo com PIN
+## 6. Dados antigos
 
-O código mantém uma rotina de migração de melhor esforço para o antigo cofre AES-GCM.
+O aplicativo mantém uma tentativa de migração do antigo cofre AES-GCM caso a chave temporária da versão anterior ainda exista no mesmo navegador.
 
-Se a chave temporária da versão anterior ainda existir no navegador, a migração para o novo estado Google-only é feita automaticamente. O cofre antigo não é apagado automaticamente.
-
-Backups antigos criptografados por PIN não são restaurados pelo novo fluxo JSON sem uma etapa específica de migração.
+O cofre antigo não é apagado automaticamente.

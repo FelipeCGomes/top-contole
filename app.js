@@ -1,6 +1,8 @@
 'use strict';
 
 const VAULT_KEY = 'stop_gastos_vault_v1';
+const SESSION_KEY_STORAGE = 'stop_gastos_session_key_v1';
+const SESSION_EXPIRY_STORAGE = 'stop_gastos_session_expiry_v1';
 const APP_VERSION = 2;
 const KDF_ITERATIONS = 180000;
 
@@ -56,10 +58,19 @@ async function init(){
   bindEvents();
   bindV2Events();
   setupPwa();
+
   const existing = localStorage.getItem(VAULT_KEY);
   if(existing){
+    const restored = await restoreSession(existing);
+    if(restored){
+      ensureRecurringForMonth(selectedMonth);
+      await saveVault();
+      openApp();
+      return;
+    }
     $('#unlockBox').hidden = false;
   }else{
+    clearSessionCredentials();
     $('#setupBox').hidden = false;
   }
 }
@@ -192,8 +203,19 @@ function bindEvents(){
     document.addEventListener(evt, function(){ if(appState) resetAutoLock(); }, {passive:true});
   });
 
-  window.addEventListener('storage', function(e){
-    if(e.key === VAULT_KEY && appState) toast('O cofre foi alterado em outra aba. Bloqueie e reabra para sincronizar.','info');
+  window.addEventListener('storage', async function(e){
+    if(e.key !== VAULT_KEY || !appState || !sessionKey || !e.newValue) return;
+    try{
+      const vault = JSON.parse(e.newValue);
+      const data = await decryptVaultWithKey(vault,sessionKey);
+      appState = normalizeState(data);
+      sessionSalt = fromB64(vault.salt);
+      renderAll();
+      toast('Alterações sincronizadas automaticamente.','info');
+    }catch(err){
+      toast('O cofre mudou e precisa ser desbloqueado novamente.','info');
+      lockVault();
+    }
   });
 }
 
@@ -207,6 +229,7 @@ async function setupVault(e){
   sessionKey = await deriveKey(pin, salt);
   sessionSalt = salt;
   appState = makeInitialState();
+  await persistSession();
   await saveVault();
   $('#setupForm').reset();
   openApp();
@@ -222,12 +245,14 @@ async function unlockVault(e){
     appState = normalizeState(result.data);
     sessionKey = result.key;
     sessionSalt = fromB64(vault.salt);
+    await persistSession();
     $('#unlockForm').reset();
     ensureRecurringForMonth(selectedMonth);
     await saveVault();
     openApp();
     toast('Cofre desbloqueado.','success');
   }catch(err){
+    clearSessionCredentials();
     toast('PIN incorreto ou cofre inválido.','error');
   }
 }
@@ -246,6 +271,7 @@ function lockVault(){
   appState = null;
   sessionKey = null;
   sessionSalt = null;
+  clearSessionCredentials();
   clearTimeout(lockTimer);
   $('#appShell').hidden = true;
   $('#lockScreen').hidden = false;
@@ -259,6 +285,7 @@ async function wipeVault(){
   const ok = await confirmDialog('Apagar todos os dados?','Esta ação remove o cofre deste dispositivo e não pode ser desfeita. Exporte um backup antes se quiser preservar seus dados.');
   if(!ok) return;
   localStorage.removeItem(VAULT_KEY);
+  clearSessionCredentials();
   appState = null;
   sessionKey = null;
   sessionSalt = null;
@@ -277,7 +304,7 @@ async function deriveKey(pin,salt){
     {name:'PBKDF2',salt:salt,iterations:KDF_ITERATIONS,hash:'SHA-256'},
     material,
     {name:'AES-GCM',length:256},
-    false,
+    true,
     ['encrypt','decrypt']
   );
 }
@@ -305,13 +332,64 @@ async function decryptVault(vault,pin){
   if(!vault || !vault.salt || !vault.iv || !vault.cipher) throw new Error('invalid vault');
   const salt = fromB64(vault.salt);
   const key = await deriveKey(pin,salt);
+  const data = await decryptVaultWithKey(vault,key);
+  return {data:data,key:key};
+}
+
+
+async function persistSession(){
+  if(!sessionKey) return;
+  try{
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw',sessionKey));
+    sessionStorage.setItem(SESSION_KEY_STORAGE,toB64(raw));
+    const minutes = appState && appState.settings ? Number(appState.settings.autoLockMinutes || 0) : 0;
+    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,minutes>0 ? String(Date.now()+minutes*60*1000) : '0');
+  }catch(err){
+    clearSessionCredentials();
+  }
+}
+
+async function restoreSession(vaultText){
+  try{
+    const encoded = sessionStorage.getItem(SESSION_KEY_STORAGE);
+    if(!encoded) return false;
+    const expiry = Number(sessionStorage.getItem(SESSION_EXPIRY_STORAGE) || 0);
+    if(expiry>0 && Date.now()>expiry){
+      clearSessionCredentials();
+      return false;
+    }
+    const vault = JSON.parse(vaultText);
+    const raw = fromB64(encoded);
+    const key = await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},true,['encrypt','decrypt']);
+    const data = await decryptVaultWithKey(vault,key);
+    sessionKey = key;
+    sessionSalt = fromB64(vault.salt);
+    appState = normalizeState(data);
+    return true;
+  }catch(err){
+    clearSessionCredentials();
+    sessionKey = null;
+    sessionSalt = null;
+    appState = null;
+    return false;
+  }
+}
+
+async function decryptVaultWithKey(vault,key){
+  if(!vault || !vault.iv || !vault.cipher || !key) throw new Error('invalid vault');
   const plain = await crypto.subtle.decrypt(
     {name:'AES-GCM',iv:fromB64(vault.iv)},
     key,
     fromB64(vault.cipher)
   );
-  return {data:JSON.parse(new TextDecoder().decode(plain)),key:key};
+  return JSON.parse(new TextDecoder().decode(plain));
 }
+
+function clearSessionCredentials(){
+  sessionStorage.removeItem(SESSION_KEY_STORAGE);
+  sessionStorage.removeItem(SESSION_EXPIRY_STORAGE);
+}
+
 
 function toB64(bytes){
   let binary = '';
@@ -1167,7 +1245,13 @@ function resetAutoLock(){
   clearTimeout(lockTimer);
   if(!appState) return;
   const minutes = Number(appState.settings.autoLockMinutes || 0);
-  if(minutes > 0) lockTimer = setTimeout(lockVault,minutes*60*1000);
+  if(minutes > 0){
+    const expiry = Date.now() + minutes*60*1000;
+    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
+    lockTimer = setTimeout(lockVault,minutes*60*1000);
+  }else{
+    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,'0');
+  }
 }
 
 function exportCsv(){
@@ -1602,9 +1686,38 @@ function logAudit(action,detail){
 
 
 function setupPwa(){
-  if('serviceWorker' in navigator){
-    window.addEventListener('load',function(){
-      navigator.serviceWorker.register('./service-worker.js').catch(function(){});
-    });
-  }
+  if(!('serviceWorker' in navigator)) return;
+
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load',async function(){
+    try{
+      const registration = await navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'});
+      await registration.update();
+
+      registration.addEventListener('updatefound',function(){
+        const worker = registration.installing;
+        if(!worker) return;
+        worker.addEventListener('statechange',function(){
+          if(worker.state === 'installed' && navigator.serviceWorker.controller){
+            toast('Nova versão encontrada. Atualizando automaticamente…','info');
+          }
+        });
+      });
+
+      setInterval(function(){
+        registration.update().catch(function(){});
+      },60000);
+
+      window.addEventListener('online',function(){
+        registration.update().catch(function(){});
+      });
+    }catch(err){}
+  });
 }
+

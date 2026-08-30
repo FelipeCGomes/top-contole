@@ -137,6 +137,16 @@ function normalizeState(data){
 
 function bindEvents(){
   $('#menuBtn').addEventListener('click', function(){ $('#sidebar').classList.toggle('open'); });
+  document.addEventListener('pointerdown', function(e){
+    const sidebar=$('#sidebar');
+    const menu=$('#menuBtn');
+    if(window.innerWidth<=860 && sidebar.classList.contains('open') && !sidebar.contains(e.target) && !menu.contains(e.target)){
+      sidebar.classList.remove('open');
+    }
+  }, {passive:true});
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape') $('#sidebar').classList.remove('open');
+  });
   $('#themeBtn').addEventListener('click', quickToggleTheme);
   $('#quickAddBtn').addEventListener('click', function(){ openModal('transaction'); });
   $('#globalMonth').addEventListener('change', async function(e){

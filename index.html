@@ -64,6 +64,9 @@
       <nav class="side-nav" aria-label="Navegação principal">
         <button class="nav-item active" data-nav="dashboard"><span>◫</span><b>Dashboard</b></button>
         <button class="nav-item" data-nav="transactions"><span>↕</span><b>Lançamentos</b></button>
+        <button class="nav-item" data-nav="accounts"><span>◉</span><b>Contas</b></button>
+        <button class="nav-item" data-nav="cards"><span>▣</span><b>Cartões</b></button>
+        <button class="nav-item" data-nav="bills"><span>✓</span><b>Contas a pagar</b></button>
         <button class="nav-item" data-nav="recurring"><span>↻</span><b>Custos fixos</b></button>
         <button class="nav-item" data-nav="budgets"><span>◎</span><b>Orçamentos</b></button>
         <button class="nav-item" data-nav="goals"><span>⚑</span><b>Metas</b></button>
@@ -91,6 +94,7 @@
             <span>Período</span>
             <input id="globalMonth" type="month" />
           </label>
+          <button id="privacyBtn" class="icon-btn" aria-label="Ocultar valores" title="Modo privacidade">👁</button>
           <button id="themeBtn" class="icon-btn" aria-label="Alternar tema">☾</button>
           <button id="quickAddBtn" class="btn primary">＋ Novo lançamento</button>
         </div>
@@ -108,6 +112,8 @@
             <button class="btn soft" data-nav="reports">Ver relatório</button>
           </div>
         </div>
+
+        <div id="smartAlerts" class="smart-alerts"></div>
 
         <div class="kpi-grid">
           <article class="kpi-card income">
@@ -188,6 +194,16 @@
             </div>
           </article>
         </div>
+        <div class="dashboard-grid finance-lab">
+          <article class="panel">
+            <div class="panel-head"><div><span class="eyebrow">SAÚDE FINANCEIRA</span><h3>Seu score</h3></div><span id="healthScoreBadge" class="score-badge">0/100</span></div>
+            <div class="score-wrap"><div id="healthScoreRing" class="score-ring"><strong id="healthScore">0</strong><span>pontos</span></div><div><h4 id="healthLabel">Começando</h4><div id="healthReasons" class="health-reasons"></div></div></div>
+          </article>
+          <article class="panel span-2">
+            <div class="panel-head"><div><span class="eyebrow">FLUXO FUTURO</span><h3>Previsão para os próximos 6 meses</h3></div><span class="soft-badge">receitas − despesas</span></div>
+            <div id="cashFlowForecast" class="forecast-chart"></div>
+          </article>
+        </div>
       </section>
 
       <section id="view-transactions" class="view">
@@ -214,6 +230,54 @@
           </div>
           <div id="transactionsEmpty" class="empty-block" hidden><div>↕</div><h3>Nenhum lançamento encontrado</h3><p>Adicione sua primeira receita ou despesa para começar.</p></div>
         </article>
+      </section>
+
+      <section id="view-accounts" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">CARTEIRAS</span><h3>Contas e saldos</h3><p class="muted">Centralize banco, carteira, dinheiro e poupança sem misturar transferências com receitas e despesas.</p></div>
+          <div class="filter-row"><button class="btn soft" data-open="transfer">⇄ Transferir</button><button class="btn primary" data-open="account">＋ Nova conta</button></div>
+        </div>
+        <div class="summary-chips">
+          <div><span>Saldo consolidado</span><strong id="accountsTotal">R$ 0,00</strong></div>
+          <div><span>Contas</span><strong id="accountsCount">0</strong></div>
+          <div><span>Entradas do mês</span><strong id="accountsIncome">R$ 0,00</strong></div>
+          <div><span>Saídas do mês</span><strong id="accountsExpense">R$ 0,00</strong></div>
+        </div>
+        <div id="accountsGrid" class="card-grid"></div>
+        <div id="accountsEmpty" class="empty-block panel" hidden><div>◉</div><h3>Nenhuma conta cadastrada</h3><p>Cadastre suas contas para acompanhar os saldos individual e consolidado.</p></div>
+      </section>
+
+      <section id="view-cards" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">CRÉDITO</span><h3>Cartões, limites e faturas</h3><p class="muted">Acompanhe limite comprometido, parcelas futuras e valor da fatura por cartão.</p></div>
+          <button class="btn primary" data-open="card">＋ Novo cartão</button>
+        </div>
+        <div class="summary-chips">
+          <div><span>Limite total</span><strong id="cardsLimit">R$ 0,00</strong></div>
+          <div><span>Limite comprometido</span><strong id="cardsUsed">R$ 0,00</strong></div>
+          <div><span>Disponível</span><strong id="cardsAvailable">R$ 0,00</strong></div>
+          <div><span>Fatura do período</span><strong id="cardsInvoice">R$ 0,00</strong></div>
+        </div>
+        <div id="cardsGrid" class="card-grid"></div>
+        <article class="panel table-panel">
+          <div class="panel-head"><div><span class="eyebrow">FATURA</span><h3>Compras e parcelas de <span id="invoiceMonthLabel">mês</span></h3></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Compra</th><th>Cartão</th><th>Parcela</th><th>Compra original</th><th>Vencimento</th><th class="right">Valor da parcela</th></tr></thead><tbody id="cardInvoiceTable"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="view-bills" class="view">
+        <div class="section-toolbar">
+          <div><span class="eyebrow">AGENDA FINANCEIRA</span><h3>Contas a pagar e receber</h3><p class="muted">Separe previsões de lançamentos realizados e marque cada compromisso como pago.</p></div>
+          <button class="btn primary" data-open="bill">＋ Nova conta</button>
+        </div>
+        <div class="summary-chips">
+          <div><span>Pendente no mês</span><strong id="billsPending">R$ 0,00</strong></div>
+          <div><span>Vencido</span><strong id="billsOverdue">R$ 0,00</strong></div>
+          <div><span>Pago no mês</span><strong id="billsPaid">R$ 0,00</strong></div>
+          <div><span>Próximos 7 dias</span><strong id="billsNext7">R$ 0,00</strong></div>
+        </div>
+        <div id="billsGrid" class="bill-grid"></div>
+        <div id="billsEmpty" class="empty-block panel" hidden><div>✓</div><h3>Nenhuma conta prevista</h3><p>Cadastre boletos, contas, recebimentos e compromissos futuros.</p></div>
       </section>
 
       <section id="view-recurring" class="view">
@@ -261,7 +325,7 @@
       <section id="view-reports" class="view">
         <div class="section-toolbar">
           <div><span class="eyebrow">ANÁLISE</span><h3>Relatório financeiro</h3><p class="muted">Indicadores para entender hábitos e tomar decisões melhores.</p></div>
-          <button id="exportCsvBtn" class="btn soft">↓ Exportar CSV</button>
+          <div class="filter-row"><button id="printReportBtn" class="btn soft">⎙ PDF / Imprimir</button><button id="exportCsvBtn" class="btn soft">↓ Exportar CSV</button></div>
         </div>
         <div id="insightGrid" class="insight-grid"></div>
         <div class="dashboard-grid reports-grid">
@@ -308,6 +372,11 @@
             <div><span class="settings-icon">✦</span><div><h3>Dados de demonstração</h3><p class="muted">Carrega exemplos para explorar todas as telas.</p></div></div>
             <button id="demoBtn" class="btn soft">Carregar demonstração</button>
           </article>
+          <article class="panel settings-card category-settings">
+            <div><span class="settings-icon">◈</span><div><h3>Categorias personalizadas</h3><p class="muted">Crie categorias, ícones, cores e classifique como essencial, desejo ou futuro.</p></div></div>
+            <button class="btn soft" data-open="category">＋ Nova categoria</button>
+            <div id="categoryManager" class="category-manager"></div>
+          </article>
           <article class="panel settings-card danger-zone">
             <div><span class="settings-icon">!</span><div><h3>Apagar dados</h3><p class="muted">Remove permanentemente o cofre deste dispositivo.</p></div></div>
             <button id="wipeBtn" class="btn danger">Apagar tudo</button>
@@ -343,6 +412,13 @@
         <label class="field">Data<input id="txDate" required type="date" /></label>
         <label class="field">Categoria<select id="txCategory" required></select></label>
         <label class="field">Pagamento<select id="txPayment"><option>Pix</option><option>Cartão de crédito</option><option>Cartão de débito</option><option>Dinheiro</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label class="field">Conta / carteira<select id="txAccount"></select></label>
+        <div id="creditFields" class="credit-fields span-2">
+          <label class="field">Cartão<select id="txCard"></select></label>
+          <label class="field">Quantidade de parcelas<input id="txInstallments" type="number" min="1" max="60" step="1" value="1" /></label>
+          <div id="installmentPreview" class="installment-preview span-2">À vista</div>
+        </div>
+        <label class="field span-2">Tags<input id="txTags" maxlength="120" placeholder="Ex.: viagem, trabalho, faculdade" /></label>
         <label class="field span-2">Observação<textarea id="txNotes" rows="3" maxlength="240" placeholder="Opcional"></textarea></label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar lançamento</button></div>
       </form>
@@ -354,6 +430,7 @@
           <label><input type="radio" name="recType" value="income" /><span>Receita fixa</span></label>
         </div>
         <label class="field span-2">Descrição<input id="recDescription" required maxlength="80" placeholder="Ex.: Internet" /></label>
+        <label class="field">Natureza<select id="recKind"><option value="fixed">Custo/receita fixa</option><option value="subscription">Assinatura</option></select></label>
         <label class="field">Valor<input id="recAmount" required type="number" min="0.01" step="0.01" /></label>
         <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
         <label class="field">Categoria<select id="recCategory" required></select></label>
@@ -377,6 +454,58 @@
         <label class="field">Prazo<input id="goalDeadline" type="date" /></label>
         <label class="field">Ícone<select id="goalIcon"><option>🎯</option><option>🛟</option><option>✈️</option><option>🏠</option><option>🚗</option><option>💻</option><option>📚</option><option>💰</option></select></label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar meta</button></div>
+      </form>
+
+      <form id="accountForm" class="modal-form" hidden>
+        <input id="accountId" type="hidden" />
+        <label class="field span-2">Nome da conta<input id="accountName" required maxlength="60" placeholder="Ex.: Banco do Brasil" /></label>
+        <label class="field">Tipo<select id="accountType"><option>Conta corrente</option><option>Carteira digital</option><option>Dinheiro</option><option>Poupança</option><option>Investimento</option><option>Outro</option></select></label>
+        <label class="field">Saldo inicial<input id="accountOpening" type="number" step="0.01" value="0" /></label>
+        <label class="field">Ícone<select id="accountIcon"><option>🏦</option><option>💳</option><option>💵</option><option>📱</option><option>📈</option><option>👛</option></select></label>
+        <label class="field">Cor<input id="accountColor" type="color" value="#7c5cff" /></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar conta</button></div>
+      </form>
+
+      <form id="cardForm" class="modal-form" hidden>
+        <input id="cardId" type="hidden" />
+        <label class="field span-2">Nome do cartão<input id="cardName" required maxlength="60" placeholder="Ex.: Nubank Platinum" /></label>
+        <label class="field">Bandeira<select id="cardBrand"><option>Visa</option><option>Mastercard</option><option>Elo</option><option>Amex</option><option>Hipercard</option><option>Outro</option></select></label>
+        <label class="field">Limite<input id="cardLimit" required type="number" min="0" step="0.01" /></label>
+        <label class="field">Dia de fechamento<input id="cardClosingDay" required type="number" min="1" max="31" value="3" /></label>
+        <label class="field">Dia de vencimento<input id="cardDueDay" required type="number" min="1" max="31" value="10" /></label>
+        <label class="field">Conta de pagamento<select id="cardAccount"></select></label>
+        <label class="field">Cor<input id="cardColor" type="color" value="#141b34" /></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar cartão</button></div>
+      </form>
+
+      <form id="billForm" class="modal-form" hidden>
+        <input id="billId" type="hidden" />
+        <div class="type-switch span-2"><label><input type="radio" name="billType" value="expense" checked /><span>A pagar</span></label><label><input type="radio" name="billType" value="income" /><span>A receber</span></label></div>
+        <label class="field span-2">Descrição<input id="billDescription" required maxlength="80" /></label>
+        <label class="field">Valor<input id="billAmount" required type="number" min="0.01" step="0.01" /></label>
+        <label class="field">Vencimento<input id="billDueDate" required type="date" /></label>
+        <label class="field">Categoria<select id="billCategory"></select></label>
+        <label class="field">Conta<select id="billAccount"></select></label>
+        <label class="field span-2">Observação<textarea id="billNotes" rows="2" maxlength="200"></textarea></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar previsão</button></div>
+      </form>
+
+      <form id="transferForm" class="modal-form" hidden>
+        <label class="field">Conta de origem<select id="transferFrom" required></select></label>
+        <label class="field">Conta de destino<select id="transferTo" required></select></label>
+        <label class="field">Valor<input id="transferAmount" required type="number" min="0.01" step="0.01" /></label>
+        <label class="field">Data<input id="transferDate" required type="date" /></label>
+        <label class="field span-2">Observação<input id="transferNotes" maxlength="160" placeholder="Opcional" /></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Transferir</button></div>
+      </form>
+
+      <form id="categoryForm" class="modal-form" hidden>
+        <input id="categoryId" type="hidden" />
+        <label class="field">Nome<input id="categoryName" required maxlength="40" /></label>
+        <label class="field">Ícone<input id="categoryIcon" required maxlength="4" value="📦" /></label>
+        <label class="field">Cor<input id="categoryColor" type="color" value="#8d99ae" /></label>
+        <label class="field">Grupo<select id="categoryGroup"><option value="essential">Essencial</option><option value="wants">Desejos</option><option value="future">Futuro / investimentos</option><option value="income">Receita</option></select></label>
+        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar categoria</button></div>
       </form>
 
       <form id="backupPinForm" class="modal-form" hidden>

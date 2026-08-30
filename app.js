@@ -3,6 +3,8 @@
 const VAULT_KEY = 'stop_gastos_vault_v1';
 const SESSION_KEY_STORAGE = 'stop_gastos_session_key_v1';
 const SESSION_EXPIRY_STORAGE = 'stop_gastos_session_expiry_v1';
+const REFRESH_KEY_STORAGE = 'stop_gastos_refresh_key_v1';
+const REFRESH_EXPIRY_STORAGE = 'stop_gastos_refresh_expiry_v1';
 const APP_VERSION = 2;
 const KDF_ITERATIONS = 180000;
 
@@ -352,9 +354,18 @@ async function persistSession(){
   if(!sessionKey) return;
   try{
     const raw = new Uint8Array(await crypto.subtle.exportKey('raw',sessionKey));
-    sessionStorage.setItem(SESSION_KEY_STORAGE,toB64(raw));
+    const encoded = toB64(raw);
     const minutes = appState && appState.settings ? Number(appState.settings.autoLockMinutes || 0) : 0;
-    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,minutes>0 ? String(Date.now()+minutes*60*1000) : '0');
+    const leaseMs = minutes>0 ? minutes*60*1000 : 12*60*60*1000;
+    const expiry = Date.now()+leaseMs;
+
+    sessionStorage.setItem(SESSION_KEY_STORAGE,encoded);
+    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
+
+    // Fallback exclusivamente para recarregamento da página.
+    // Em uma navegação nova ele não é utilizado.
+    localStorage.setItem(REFRESH_KEY_STORAGE,encoded);
+    localStorage.setItem(REFRESH_EXPIRY_STORAGE,String(expiry));
   }catch(err){
     clearSessionCredentials();
   }
@@ -362,23 +373,39 @@ async function persistSession(){
 
 async function restoreSession(vaultText){
   try{
-    const encoded = sessionStorage.getItem(SESSION_KEY_STORAGE);
+    let encoded = sessionStorage.getItem(SESSION_KEY_STORAGE);
+    let expiry = Number(sessionStorage.getItem(SESSION_EXPIRY_STORAGE) || 0);
+
+    if(!encoded){
+      const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+      const isReload = !!(nav && nav.type === 'reload');
+      const refreshExpiry = Number(localStorage.getItem(REFRESH_EXPIRY_STORAGE) || 0);
+
+      if(isReload && refreshExpiry>0 && Date.now()<=refreshExpiry){
+        encoded = localStorage.getItem(REFRESH_KEY_STORAGE);
+        expiry = refreshExpiry;
+      }
+    }
+
     if(!encoded) return false;
-    const expiry = Number(sessionStorage.getItem(SESSION_EXPIRY_STORAGE) || 0);
     if(expiry>0 && Date.now()>expiry){
       clearSessionCredentials();
       return false;
     }
+
     const vault = JSON.parse(vaultText);
     const raw = fromB64(encoded);
     const key = await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},true,['encrypt','decrypt']);
     const data = await decryptVaultWithKey(vault,key);
+
     sessionKey = key;
     sessionSalt = fromB64(vault.salt);
     appState = normalizeState(data);
+
+    // Reconstitui a sessão normal após um refresh.
+    await persistSession();
     return true;
   }catch(err){
-    clearSessionCredentials();
     sessionKey = null;
     sessionSalt = null;
     appState = null;
@@ -399,8 +426,9 @@ async function decryptVaultWithKey(vault,key){
 function clearSessionCredentials(){
   sessionStorage.removeItem(SESSION_KEY_STORAGE);
   sessionStorage.removeItem(SESSION_EXPIRY_STORAGE);
+  localStorage.removeItem(REFRESH_KEY_STORAGE);
+  localStorage.removeItem(REFRESH_EXPIRY_STORAGE);
 }
-
 
 function toB64(bytes){
   let binary = '';
@@ -1256,12 +1284,16 @@ function resetAutoLock(){
   clearTimeout(lockTimer);
   if(!appState) return;
   const minutes = Number(appState.settings.autoLockMinutes || 0);
+
   if(minutes > 0){
     const expiry = Date.now() + minutes*60*1000;
     sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
+    localStorage.setItem(REFRESH_EXPIRY_STORAGE,String(expiry));
     lockTimer = setTimeout(lockVault,minutes*60*1000);
   }else{
-    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,'0');
+    const expiry = Date.now() + 12*60*60*1000;
+    sessionStorage.setItem(SESSION_EXPIRY_STORAGE,String(expiry));
+    localStorage.setItem(REFRESH_EXPIRY_STORAGE,String(expiry));
   }
 }
 
@@ -1578,37 +1610,50 @@ async function reconcileCloudVault(remote){
     return;
   }
 
+  // Se o app já está desbloqueado, primeiro validamos o cofre remoto
+  // com a chave atual. Nunca substituímos o cofre local antes disso.
+  if(appState && sessionKey){
+    try{
+      const vault=JSON.parse(remote.vault);
+      const data=await decryptVaultWithKey(vault,sessionKey);
+
+      cloudApplying=true;
+      localStorage.setItem(VAULT_KEY,remote.vault);
+      appState=normalizeState(data);
+      sessionSalt=fromB64(vault.salt);
+      await persistSession();
+      renderAll();
+
+      cloudLastSyncedAt=new Date();
+      setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base atualizada pela nuvem');
+      toast('Alterações de outro dispositivo foram sincronizadas.','info');
+    }catch(err){
+      // Mantém a sessão e a base local intactas.
+      setCloudStatus('error','Conflito de cofre: a versão da nuvem usa outra chave/PIN');
+      toast('A nuvem possui um cofre incompatível com esta sessão. Seus dados locais foram preservados.','error');
+    }finally{
+      cloudApplying=false;
+    }
+    return;
+  }
+
+  // Sem sessão desbloqueada, é seguro armazenar a versão remota
+  // e solicitar o PIN para abri-la.
   cloudApplying=true;
   try{
     localStorage.setItem(VAULT_KEY,remote.vault);
-
-    if(appState && sessionKey){
-      try{
-        const vault=JSON.parse(remote.vault);
-        const data=await decryptVaultWithKey(vault,sessionKey);
-        appState=normalizeState(data);
-        sessionSalt=fromB64(vault.salt);
-        await persistSession();
-        renderAll();
-        toast('Alterações de outro dispositivo foram sincronizadas.','info');
-      }catch(err){
-        lockVault();
-        toast('Base atualizada pela nuvem. Digite seu PIN novamente para abrir a versão sincronizada.','info');
-      }
-    }else{
-      clearSessionCredentials();
-      $('#setupBox').hidden=true;
-      $('#unlockBox').hidden=false;
-      $('#unlockPin').value='';
-      const lock=$('#lockScreen');
-      if(lock) lock.hidden=false;
-      const shell=$('#appShell');
-      if(shell) shell.hidden=true;
-      toast('Cofre encontrado na sua conta Google. Digite o mesmo PIN para abri-lo.','success');
-    }
+    clearSessionCredentials();
+    $('#setupBox').hidden=true;
+    $('#unlockBox').hidden=false;
+    $('#unlockPin').value='';
+    const lock=$('#lockScreen');
+    if(lock) lock.hidden=false;
+    const shell=$('#appShell');
+    if(shell) shell.hidden=true;
 
     cloudLastSyncedAt=new Date();
-    setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base atualizada pela nuvem');
+    setCloudStatus(remote.fromCache?'offline':'synced',remote.fromCache?'Base recuperada do cache Firebase':'Base encontrada na nuvem');
+    toast('Cofre encontrado na sua conta Google. Digite o mesmo PIN para abri-lo.','success');
   }finally{
     cloudApplying=false;
   }

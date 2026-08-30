@@ -28,6 +28,9 @@ let localStateUpdatedAt = '';
 let familyContext = null;
 let familyStates = {};
 let familyStateUnsubs = [];
+let familyInvitations = [];
+let familyInviteUnsubscribe = null;
+let notifiedFamilyInvites = new Set();
 
 const fallbackCategories = [
   {id:'moradia',name:'Moradia',icon:'🏠',color:'#7c5cff'},
@@ -1318,6 +1321,7 @@ function esc(value){
 
 function bindCloudEvents(){
   bindFamilyEvents();
+
   const signInButtons=['googleLoginBtn','googleSettingsBtn'];
   signInButtons.forEach(function(id){
     const el=$('#'+id);
@@ -1330,8 +1334,17 @@ function bindCloudEvents(){
   const syncBtn=$('#cloudSyncNowBtn');
   if(syncBtn) syncBtn.addEventListener('click',forceCloudSync);
 
-  const notificationsBtn=$('#enableNotificationsBtn');
-  if(notificationsBtn) notificationsBtn.addEventListener('click',enableCloudNotifications);
+  const enablePushBtn=$('#enableNotificationsBtn');
+  if(enablePushBtn) enablePushBtn.addEventListener('click',enableCloudNotifications);
+
+  const familyBell=$('#notificationsBtn');
+  if(familyBell) familyBell.addEventListener('click',function(){
+    navigate('family');
+    setTimeout(function(){
+      const panel=$('#familyNotificationsPanel');
+      if(panel && !panel.hidden) panel.scrollIntoView({behavior:'smooth',block:'start'});
+    },80);
+  });
 
   const statusBtn=$('#cloudStatusBtn');
   if(statusBtn) statusBtn.addEventListener('click',function(){navigate('settings');});
@@ -1383,6 +1396,9 @@ async function handleCloudUser(user){
   if(!cloudUser){
     familyContext=null;
     familyStates={};
+    familyInvitations=[];
+    notifiedFamilyInvites.clear();
+    renderFamilyNotifications();
     appState=null;
     localStateUpdatedAt='';
     renderCloudUi();
@@ -1753,6 +1769,10 @@ function showSignedOutScreen(){
 function clearFamilyWatchers(){
   familyStateUnsubs.forEach(function(unsub){try{unsub();}catch(err){}});
   familyStateUnsubs=[];
+  if(familyInviteUnsubscribe){
+    try{familyInviteUnsubscribe();}catch(err){}
+    familyInviteUnsubscribe=null;
+  }
 }
 
 async function refreshFamilyData(){
@@ -1765,41 +1785,74 @@ async function refreshFamilyData(){
     familyStates=result.states || {};
     if(appState) familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt:localStateUpdatedAt};
 
+    familyInvitations=await cloud.getFamilyInvitations();
+
     clearFamilyWatchers();
-    if(familyContext?.profile?.role==='admin'){
-      (familyContext.members || []).forEach(function(member){
-        if(member.uid===cloudUser.uid) return;
-        try{
-          const unsub=cloud.watchState(function(remote){
-            familyStates[member.uid]=remote;
-            renderFamily();
-          },member.uid);
-          familyStateUnsubs.push(unsub);
-        }catch(err){}
+
+    familyInviteUnsubscribe=cloud.watchFamilyInvitations(function(items){
+      const previous=new Set(familyInvitations.map(i=>i.id));
+      familyInvitations=items || [];
+      renderFamilyNotifications();
+      familyInvitations.forEach(function(invite){
+        if(!previous.has(invite.id)) showIncomingFamilyInvite(invite);
       });
+    });
+
+    if(familyContext?.profile?.role==='admin'){
+      (familyContext.members || [])
+        .filter(member=>(member.status || 'active')==='active')
+        .forEach(function(member){
+          if(member.uid===cloudUser.uid) return;
+          try{
+            const unsub=cloud.watchState(function(remote){
+              familyStates[member.uid]=remote;
+              renderFamily();
+            },member.uid);
+            familyStateUnsubs.push(unsub);
+          }catch(err){}
+        });
     }
+
     renderFamily();
+    renderFamilyNotifications();
+    familyInvitations.forEach(showIncomingFamilyInvite);
   }catch(err){
     familyContext=null;
     familyStates={};
+    familyInvitations=[];
     renderFamily();
+    renderFamilyNotifications();
   }
 }
 
 function bindFamilyEvents(){
   $('#createFamilyBtn').addEventListener('click',createFamilyFromUi);
-  $('#joinFamilyBtn').addEventListener('click',joinFamilyFromUi);
-  $('#generateInviteBtn').addEventListener('click',generateFamilyInvite);
-  $('#copyInviteBtn').addEventListener('click',copyFamilyInvite);
+  $('#inviteFamilyByEmailBtn').addEventListener('click',inviteFamilyByEmailFromUi);
   $('#refreshFamilyBtn').addEventListener('click',async function(){
     await refreshFamilyData();
     toast('Dados da família atualizados.','success');
   });
   $('#leaveFamilyBtn').addEventListener('click',leaveFamilyFromUi);
+
   $('#familyMembersList').addEventListener('click',async function(e){
     const btn=e.target.closest('[data-remove-member]');
     if(!btn) return;
     await removeFamilyMemberFromUi(btn.getAttribute('data-remove-member'));
+  });
+
+  $('#familyNotificationsList').addEventListener('click',async function(e){
+    const btn=e.target.closest('[data-family-response]');
+    if(!btn) return;
+    const requestId=btn.getAttribute('data-request-id');
+    const accept=btn.getAttribute('data-family-response')==='accept';
+    await respondFamilyInvitationFromUi(requestId,accept);
+  });
+
+  $('#familyMemberEmailInput').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      inviteFamilyByEmailFromUi();
+    }
   });
 }
 
@@ -1816,39 +1869,110 @@ async function createFamilyFromUi(){
   }
 }
 
-async function joinFamilyFromUi(){
+async function inviteFamilyByEmailFromUi(){
   const cloud=window.StopGastosCloud;
-  const code=$('#familyInviteInput').value.trim().toUpperCase();
+  const input=$('#familyMemberEmailInput');
+  const button=$('#inviteFamilyByEmailBtn');
+  const feedback=$('#familyInviteFeedback');
+  const email=input.value.trim().toLowerCase();
+
+  if(!email || !email.includes('@')){
+    feedback.textContent='Informe um e-mail válido.';
+    feedback.className='form-hint error';
+    input.focus();
+    return;
+  }
+
+  button.disabled=true;
+  feedback.textContent='Localizando a conta Google…';
+  feedback.className='form-hint';
+
   try{
-    await cloud.acceptFamilyInvite(code);
-    $('#familyInviteInput').value='';
+    const result=await cloud.sendFamilyInviteByEmail(email);
+    input.value='';
+    feedback.textContent='Convite enviado para '+(result.target.displayName || result.target.email || email)+'.';
+    feedback.className='form-hint success';
     await refreshFamilyData();
-    toast('Você entrou na família.','success');
+    toast('Convite enviado. O usuário receberá uma notificação no Stop Gastos.','success');
   }catch(err){
-    toast(err.message || 'Não foi possível aceitar o convite.','error');
+    feedback.textContent=err.message || 'Não foi possível enviar o convite.';
+    feedback.className='form-hint error';
+    toast(feedback.textContent,'error');
+  }finally{
+    button.disabled=false;
   }
 }
 
-async function generateFamilyInvite(){
+async function respondFamilyInvitationFromUi(requestId,accept){
   const cloud=window.StopGastosCloud;
+  const invite=familyInvitations.find(i=>i.id===requestId);
+  if(!invite) return;
+
+  const action=accept?'Aceitar convite?':'Recusar convite?';
+  const message=accept
+    ? 'Você passará a fazer parte de '+(invite.familyName || 'esta família')+' e o administrador poderá visualizar seus dados financeiros.'
+    : 'O vínculo com '+(invite.familyName || 'esta família')+' será marcado como inativo.';
+
+  const ok=await confirmDialog(action,message);
+  if(!ok) return;
+
   try{
-    const code=await cloud.createFamilyInvite();
-    $('#familyInviteCode').textContent=code;
-    toast('Código de convite gerado.','success');
+    await cloud.respondFamilyInvitation(requestId,accept);
+    notifiedFamilyInvites.delete(requestId);
+    await refreshFamilyData();
+    toast(accept?'Convite aceito. Bem-vindo à família.':'Convite recusado. O vínculo foi marcado como inativo.','success');
+    if(accept) navigate('family');
   }catch(err){
-    toast(err.message || 'Não foi possível gerar o convite.','error');
+    toast(err.message || 'Não foi possível responder ao convite.','error');
   }
 }
 
-async function copyFamilyInvite(){
-  const code=$('#familyInviteCode').textContent.trim();
-  if(!code || code==='—') return toast('Gere um código primeiro.','info');
-  try{
-    await navigator.clipboard.writeText(code);
-    toast('Código copiado.','success');
-  }catch(err){
-    toast('Código: '+code,'info');
+function showIncomingFamilyInvite(invite){
+  if(!invite || notifiedFamilyInvites.has(invite.id)) return;
+  notifiedFamilyInvites.add(invite.id);
+
+  toast('Convite de '+(invite.createdByName || invite.familyName || 'uma família')+' aguardando sua resposta.','info');
+
+  if('Notification' in window && Notification.permission==='granted'){
+    try{
+      const n=new Notification('Convite para família · Stop Gastos',{
+        body:(invite.createdByName || 'Um administrador')+' convidou você para '+(invite.familyName || 'uma família')+'.',
+        icon:'favicon.svg',
+        tag:'family-'+invite.id
+      });
+      n.onclick=function(){window.focus();navigate('family');};
+    }catch(err){}
   }
+}
+
+function renderFamilyNotifications(){
+  const panel=$('#familyNotificationsPanel');
+  const list=$('#familyNotificationsList');
+  const count=$('#familyNotificationCount');
+  const badge=$('#notificationBadge');
+
+  if(!panel || !list || !count || !badge) return;
+
+  const pending=familyInvitations || [];
+  panel.hidden=pending.length===0;
+  count.textContent=pending.length+' '+(pending.length===1?'pendente':'pendentes');
+  badge.hidden=pending.length===0;
+  badge.textContent=String(Math.min(99,pending.length));
+
+  list.innerHTML=pending.map(function(invite){
+    const inviter=invite.createdByName || 'Administrador';
+    const family=invite.familyName || 'Família';
+    return '<div class="family-notification-card">'+
+      '<div class="family-notification-icon">✦</div>'+
+      '<div class="family-notification-copy"><b>'+escapeHtml(family)+'</b>'+
+      '<span>'+escapeHtml(inviter)+' convidou você para fazer parte da família.</span>'+
+      '<small>Ao aceitar, o administrador poderá visualizar seus lançamentos financeiros.</small></div>'+
+      '<div class="family-notification-actions">'+
+        '<button class="btn primary mini" data-family-response="accept" data-request-id="'+escapeHtml(invite.id)+'">Aceitar</button>'+
+        '<button class="btn soft mini" data-family-response="decline" data-request-id="'+escapeHtml(invite.id)+'">Recusar</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
 }
 
 async function removeFamilyMemberFromUi(uid){
@@ -1891,20 +2015,24 @@ function renderFamily(){
 
   if(!hasFamily){
     $('#familyTitle').textContent='Sua família financeira';
-    $('#familySubtitle').textContent='Crie uma família ou entre com um código de convite.';
-    $('#familyRoleBadge').textContent='Sem família';
+    $('#familySubtitle').textContent=familyInvitations.length
+      ? 'Você tem um convite aguardando resposta.'
+      : 'Crie uma família ou aguarde um convite enviado ao seu Gmail de acesso.';
+    $('#familyRoleBadge').textContent=familyInvitations.length?'Convite pendente':'Sem família';
+    renderFamilyNotifications();
     return;
   }
 
   const isAdmin=context.profile?.role==='admin';
   $('#familyTitle').textContent=context.family.name || 'Família';
   $('#familySubtitle').textContent=isAdmin
-    ? 'Você pode acompanhar os lançamentos financeiros de todos os membros.'
-    : 'Registre seus gastos normalmente. O administrador verá o consolidado da família.';
+    ? 'Administre membros e acompanhe o consolidado financeiro da família.'
+    : 'Registre seus gastos normalmente. O administrador acompanha o consolidado familiar.';
   $('#familyRoleBadge').textContent=isAdmin?'Administrador':'Membro';
 
-  const members=context.members || [];
-  $('#familyMemberCount').textContent=String(members.length);
+  const allMembers=context.members || [];
+  const activeMembers=allMembers.filter(m=>(m.status || 'active')==='active');
+  $('#familyMemberCount').textContent=String(activeMembers.length);
   $('#familyInvitePanel').hidden=!isAdmin;
   $('#familyAdminFinancePanel').hidden=!isAdmin;
   $('#leaveFamilyBtn').hidden=context.family.ownerUid===cloudUser?.uid;
@@ -1914,10 +2042,12 @@ function renderFamily(){
   const memberTotals=[];
   const recent=[];
 
-  members.forEach(function(member){
+  activeMembers.forEach(function(member){
     const entry=familyStates[member.uid];
     const state=entry && entry.state ? entry.state : null;
-    const tx=state && Array.isArray(state.transactions) ? state.transactions.filter(t=>String(t.date||'').slice(0,7)===month) : [];
+    const tx=state && Array.isArray(state.transactions)
+      ? state.transactions.filter(t=>String(t.date||'').slice(0,7)===month)
+      : [];
     const expense=tx.filter(t=>t.type==='expense').reduce((a,t)=>a+Number(t.amount||0),0);
     const income=tx.filter(t=>t.type==='income').reduce((a,t)=>a+Number(t.amount||0),0);
     totalExpense+=expense;
@@ -1930,17 +2060,22 @@ function renderFamily(){
   $('#familyIncomeTotal').textContent=money(totalIncome);
   $('#familyBalanceTotal').textContent=money(totalIncome-totalExpense);
 
-  $('#familyMembersList').innerHTML=members.map(function(member){
+  $('#familyMembersList').innerHTML=allMembers.map(function(member){
     const isSelf=member.uid===cloudUser?.uid;
+    const status=member.status || 'active';
     const canRemove=isAdmin && !isSelf && member.uid!==context.family.ownerUid;
     const initial=(member.displayName || member.email || '?').trim().charAt(0).toUpperCase();
-    return '<div class="family-member-row">'+
+    const statusLabel=status==='pending'?'Aguardando':status==='inactive'?'Inativo':'Ativo';
+    const statusClass=status==='pending'?'pending':status==='inactive'?'inactive':'active';
+
+    return '<div class="family-member-row '+statusClass+'">'+
       '<div class="family-mini-avatar">'+escapeHtml(initial)+'</div>'+
       '<div class="family-member-info"><b>'+escapeHtml(member.displayName || member.email || 'Membro')+'</b>'+
-      '<small>'+escapeHtml(member.email || '')+' · '+(member.role==='admin'?'Admin':'Membro')+(isSelf?' · você':'')+'</small></div>'+
-      (canRemove?'<button class="icon-btn" data-remove-member="'+escapeHtml(member.uid)+'" title="Remover membro">×</button>':'')+
+      '<small>'+escapeHtml(member.email || '')+(isSelf?' · você':'')+'</small></div>'+
+      '<span class="member-status '+statusClass+'">'+statusLabel+'</span>'+
+      (canRemove?'<button class="row-btn member-remove" data-remove-member="'+escapeHtml(member.uid)+'" title="Remover vínculo">×</button>':'')+
     '</div>';
-  }).join('');
+  }).join('') || '<div class="empty-state">Nenhum membro vinculado.</div>';
 
   if(isAdmin){
     $('#familyMemberTotals').innerHTML=memberTotals.sort((a,b)=>b.expense-a.expense).map(function(item){
@@ -1953,6 +2088,8 @@ function renderFamily(){
       return '<tr><td>'+formatDate(item.t.date)+'</td><td>'+escapeHtml(item.member.displayName || item.member.email || 'Membro')+'</td><td>'+escapeHtml(item.t.description || '')+'</td><td>'+escapeHtml(getCategoryFromState(item.t.category,item.member.uid).name)+'</td><td class="right '+(item.t.type==='expense'?'expense-text':'income-text')+'">'+(item.t.type==='expense'?'- ':'+ ')+money(item.t.amount)+'</td></tr>';
     }).join('') || '<tr><td colspan="5" class="empty-cell">Nenhum lançamento da família neste mês.</td></tr>';
   }
+
+  renderFamilyNotifications();
 }
 
 function getCategoryFromState(id,uid){

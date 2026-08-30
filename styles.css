@@ -1196,7 +1196,7 @@ body{overflow-x:hidden}
   .topbar{gap:8px}
   .month-picker-wrap input{width:103px}
   .family-kpis{grid-template-columns:1fr}
-  .family-member-row{grid-template-columns:38px minmax(0,1fr);display:grid}
+  .family-member-row{grid-template-columns:38px minmax(0,1fr) auto;display:grid}
   .family-member-row .member-status{grid-column:2;justify-self:start}
   .family-member-row .member-remove{grid-column:3;grid-row:1 / span 2}
   .family-flow{display:grid;grid-template-columns:1fr}

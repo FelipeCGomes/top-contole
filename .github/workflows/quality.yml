@@ -42,6 +42,39 @@ jobs:
           }
           console.log('DOM bindings OK:', new Set(ids).size, 'ids checked');
           NODE
+      - name: Validate CSS structure
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const css = fs.readFileSync('styles.css','utf8');
+          const clean = css.replace(/\/\*[\s\S]*?\*\//g,'');
+          let depth = 0;
+          for (const ch of clean) {
+            if (ch === '{') depth++;
+            if (ch === '}') depth--;
+            if (depth < 0) {
+              console.error('CSS has an unexpected closing brace');
+              process.exit(1);
+            }
+          }
+          if (depth !== 0) {
+            console.error('CSS brace balance failed:', depth);
+            process.exit(1);
+          }
+          const roots = (clean.match(/:root\s*\{/g) || []).length;
+          if (roots !== 1) {
+            console.error('Expected exactly one :root block, found', roots);
+            process.exit(1);
+          }
+          for (const bp of ['1200px','900px','640px','420px']) {
+            const count = (clean.match(new RegExp('@media\\(max-width:' + bp.replace('.', '\\.') + '\\)', 'g')) || []).length;
+            if (count !== 1) {
+              console.error('Expected exactly one responsive breakpoint for', bp, 'found', count);
+              process.exit(1);
+            }
+          }
+          console.log('CSS structure OK');
+          NODE
       - name: Check required files
         run: |
           test -s index.html

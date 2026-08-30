@@ -7,16 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function memberPath(familyId, userId) {
+      return /databases/$(database)/documents/families/$(familyId)/members/$(userId);
+    }
+
     function memberOf(familyId) {
       return signedIn()
         && familyId is string
         && familyId.size() > 0
-        && exists(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid));
+        && exists(memberPath(familyId, request.auth.uid))
+        && (
+          !('status' in get(memberPath(familyId, request.auth.uid)).data)
+          || get(memberPath(familyId, request.auth.uid)).data.status == 'active'
+        );
     }
 
     function adminOf(familyId) {
       return memberOf(familyId)
-        && get(/databases/$(database)/documents/families/$(familyId)/members/$(request.auth.uid)).data.role == 'admin';
+        && get(memberPath(familyId, request.auth.uid)).data.role == 'admin';
     }
 
     function profileOf(userId) {
@@ -29,6 +37,22 @@ service cloud.firestore {
         && profileOf(userId).familyId is string
         && profileOf(userId).familyId.size() > 0
         && adminOf(profileOf(userId).familyId);
+    }
+
+    match /userDirectory/{emailHash} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /users/{userId}/profile/{profileId} {
@@ -74,26 +98,32 @@ service cloud.firestore {
       allow update, delete: if adminOf(familyId);
 
       match /members/{userId} {
-        allow read: if memberOf(familyId);
+        allow read: if signedIn() && (
+          adminOf(familyId)
+          || request.auth.uid == userId
+          || (
+            memberOf(familyId)
+            && (
+              !('status' in resource.data)
+              || resource.data.status == 'active'
+            )
+          )
+        );
 
         allow create: if signedIn() && (
           (
             request.auth.uid == userId
             && get(/databases/$(database)/documents/families/$(familyId)).data.ownerUid == request.auth.uid
             && request.resource.data.role == 'admin'
+            && request.resource.data.status == 'active'
           )
           ||
           (
-            request.auth.uid == userId
+            adminOf(familyId)
+            && request.resource.data.uid == userId
             && request.resource.data.role == 'member'
-            && request.resource.data.inviteCode is string
-            && exists(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode))
-            && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.active == true
-            && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.expiresAt > request.time
-            && get(/databases/$(database)/documents/familyInvites/$(request.resource.data.inviteCode)).data.familyId == familyId
+            && request.resource.data.status == 'pending'
           )
-          ||
-          adminOf(familyId)
         );
 
         allow update: if signedIn() && (
@@ -101,7 +131,20 @@ service cloud.firestore {
           ||
           (
             request.auth.uid == userId
+            && resource.data.uid == userId
+            && request.resource.data.uid == userId
             && request.resource.data.role == resource.data.role
+            && (
+              (
+                resource.data.status == 'pending'
+                && request.resource.data.status in ['active', 'inactive']
+              )
+              ||
+              (
+                resource.data.status == 'active'
+                && request.resource.data.status == 'active'
+              )
+            )
           )
         );
 
@@ -112,15 +155,32 @@ service cloud.firestore {
       }
     }
 
-    match /familyInvites/{code} {
-      allow read: if signedIn();
+    match /familyRequests/{requestId} {
+      allow get, list: if signedIn() && (
+        resource.data.targetUid == request.auth.uid
+        || adminOf(resource.data.familyId)
+      );
 
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.targetUid != request.auth.uid
+        && request.resource.data.status == 'pending'
         && adminOf(request.resource.data.familyId);
 
-      allow update, delete: if signedIn()
-        && adminOf(resource.data.familyId);
+      allow update: if signedIn() && (
+        (
+          resource.data.targetUid == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.targetUid == resource.data.targetUid
+          && request.resource.data.familyId == resource.data.familyId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.status in ['accepted', 'declined']
+        )
+        ||
+        adminOf(resource.data.familyId)
+      );
+
+      allow delete: if signedIn() && adminOf(resource.data.familyId);
     }
 
     match /{document=**} {

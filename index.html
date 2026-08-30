@@ -22,41 +22,17 @@
         <img src="favicon.svg" alt="" width="52" height="52" />
         <div>
           <strong>Stop Gastos</strong>
-          <span>Seu dinheiro, sob controle.</span>
+          <span>Finanças pessoais e da família.</span>
         </div>
       </div>
+      <p class="eyebrow">ACESSO SEGURO</p>
+      <h1>Entre com sua conta Google</h1>
+      <p class="muted">Seu acesso, seus dados e sua família são protegidos pelo Firebase Authentication e pelas regras do Firestore.</p>
       <div class="cloud-entry">
         <button id="googleLoginBtn" class="btn google wide" type="button"><span class="google-g">G</span> Entrar com Google</button>
-        <div id="cloudLockStatus" class="cloud-lock-status"><span class="sync-dot"></span><span>Sincronização em nuvem opcional</span></div>
+        <div id="cloudLockStatus" class="cloud-lock-status"><span class="sync-dot"></span><span>Aguardando autenticação</span></div>
       </div>
-      <div class="or-divider"><span>ou continue com o cofre local</span></div>
-
-      <div id="setupBox" hidden>
-        <p class="eyebrow">PRIMEIRO ACESSO</p>
-        <h1>Crie seu cofre financeiro</h1>
-        <p class="muted">Defina um PIN com no mínimo 4 caracteres. Seus dados serão criptografados no navegador com AES-GCM.</p>
-        <form id="setupForm" class="stack-form">
-          <label>PIN
-            <input id="setupPin" type="password" minlength="4" autocomplete="new-password" required placeholder="Crie um PIN" />
-          </label>
-          <label>Confirmar PIN
-            <input id="setupPinConfirm" type="password" minlength="4" autocomplete="new-password" required placeholder="Repita o PIN" />
-          </label>
-          <button class="btn primary wide" type="submit">Criar cofre</button>
-        </form>
-      </div>
-      <div id="unlockBox" hidden>
-        <p class="eyebrow">COFRE PROTEGIDO</p>
-        <h1>Bem-vindo de volta</h1>
-        <p class="muted">Digite seu PIN para descriptografar seus dados neste dispositivo.</p>
-        <form id="unlockForm" class="stack-form">
-          <label>PIN
-            <input id="unlockPin" type="password" autocomplete="current-password" required placeholder="Seu PIN" />
-          </label>
-          <button class="btn primary wide" type="submit">Desbloquear</button>
-        </form>
-      </div>
-      <div class="lock-note">🔒 Seus dados financeiros não são enviados para o GitHub.</div>
+      <div class="lock-note">🔐 Não há mais PIN. A sessão é mantida pela autenticação do Google.</div>
     </section>
   </div>
 
@@ -70,6 +46,7 @@
       <nav class="side-nav" aria-label="Navegação principal">
         <button class="nav-item active" data-nav="dashboard"><span>◫</span><b>Dashboard</b></button>
         <button class="nav-item" data-nav="transactions"><span>↕</span><b>Lançamentos</b></button>
+        <button class="nav-item" data-nav="family"><span>♧</span><b>Família</b></button>
         <button class="nav-item" data-nav="accounts"><span>◉</span><b>Contas</b></button>
         <button class="nav-item" data-nav="cards"><span>▣</span><b>Cartões</b></button>
         <button class="nav-item" data-nav="bills"><span>✓</span><b>Contas a pagar</b></button>
@@ -82,7 +59,7 @@
 
       <div class="sidebar-bottom">
         <button class="nav-item" data-nav="settings"><span>⚙</span><b>Configurações</b></button>
-        <div class="security-badge"><span class="pulse-dot"></span><div><b>Cofre protegido</b><small>AES-GCM local</small></div></div>
+        <div class="security-badge"><span class="pulse-dot"></span><div><b>Conta protegida</b><small>Google + Firebase</small></div></div>
       </div>
     </aside>
 
@@ -352,6 +329,79 @@
         </div>
       </section>
 
+      <section id="view-family" class="view">
+        <div class="family-hero panel">
+          <div>
+            <span class="eyebrow">CONTA FAMÍLIA</span>
+            <h2 id="familyTitle">Sua família financeira</h2>
+            <p id="familySubtitle" class="muted">Crie uma família ou entre com um código de convite.</p>
+          </div>
+          <div id="familyRoleBadge" class="family-role-badge">Sem família</div>
+        </div>
+
+        <div id="familyOnboarding" class="family-onboarding">
+          <article class="panel family-action-card">
+            <span class="settings-icon">⌂</span>
+            <div><h3>Criar uma família</h3><p class="muted">Você será o administrador e poderá acompanhar os gastos de todos os membros.</p></div>
+            <label class="field">Nome da família<input id="familyNameInput" maxlength="60" placeholder="Ex.: Família Gomes" /></label>
+            <button id="createFamilyBtn" class="btn primary" type="button">Criar família</button>
+          </article>
+          <article class="panel family-action-card">
+            <span class="settings-icon">＋</span>
+            <div><h3>Entrar em uma família</h3><p class="muted">Peça ao administrador o código de convite.</p></div>
+            <label class="field">Código do convite<input id="familyInviteInput" maxlength="16" placeholder="Ex.: A7K9M2Q4" /></label>
+            <button id="joinFamilyBtn" class="btn soft" type="button">Entrar com código</button>
+          </article>
+        </div>
+
+        <div id="familyDashboard" hidden>
+          <div class="family-kpis">
+            <article class="kpi-card"><small>Membros</small><strong id="familyMemberCount">0</strong></article>
+            <article class="kpi-card expense"><small>Gastos da família no mês</small><strong id="familyExpenseTotal">R$ 0,00</strong></article>
+            <article class="kpi-card income"><small>Receitas da família no mês</small><strong id="familyIncomeTotal">R$ 0,00</strong></article>
+            <article class="kpi-card balance"><small>Saldo consolidado</small><strong id="familyBalanceTotal">R$ 0,00</strong></article>
+          </div>
+
+          <div class="content-grid two-col">
+            <article class="panel">
+              <div class="panel-head">
+                <div><span class="eyebrow">MEMBROS</span><h3>Quem participa</h3></div>
+                <button id="refreshFamilyBtn" class="btn soft" type="button">↻ Atualizar</button>
+              </div>
+              <div id="familyMembersList" class="family-members-list"></div>
+            </article>
+
+            <article id="familyInvitePanel" class="panel">
+              <div class="panel-head"><div><span class="eyebrow">ADMIN</span><h3>Convidar membro</h3></div></div>
+              <p class="muted">Gere um código e envie para a pessoa. Ela entra com a própria conta Google.</p>
+              <div class="invite-code-box">
+                <strong id="familyInviteCode">—</strong>
+                <button id="generateInviteBtn" class="btn primary" type="button">Gerar código</button>
+                <button id="copyInviteBtn" class="btn soft" type="button">Copiar</button>
+              </div>
+            </article>
+          </div>
+
+          <article id="familyAdminFinancePanel" class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">VISÃO DO ADMIN</span><h3>Gastos por membro</h3></div>
+              <span class="muted">Somente o administrador vê os dados financeiros dos demais.</span>
+            </div>
+            <div id="familyMemberTotals" class="family-member-totals"></div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Data</th><th>Membro</th><th>Descrição</th><th>Categoria</th><th class="right">Valor</th></tr></thead>
+                <tbody id="familyRecentTransactions"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="family-footer-actions">
+            <button id="leaveFamilyBtn" class="btn soft" type="button">Sair da família</button>
+          </div>
+        </div>
+      </section>
+
       <section id="view-settings" class="view">
         <div class="settings-grid">
           <article class="panel settings-card cloud-settings">
@@ -359,7 +409,7 @@
               <span class="settings-icon">☁</span>
               <div>
                 <h3>Conta Google e sincronização</h3>
-                <p class="muted">Use a mesma conta Google em outros computadores para acessar seu cofre criptografado.</p>
+                <p class="muted">Sua conta Google mantém a sessão e sincroniza seus dados pessoais e familiares pelo Firebase.</p>
               </div>
             </div>
             <div id="cloudAccountBox" class="cloud-account-box">
@@ -389,20 +439,12 @@
             <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" /></div>
           </article>
           <article class="panel settings-card">
-            <div><span class="settings-icon">⌛</span><div><h3>Bloqueio automático</h3><p class="muted">Bloqueia o cofre após inatividade.</p></div></div>
-            <select id="autoLockSelect"><option value="5">5 minutos</option><option value="10">10 minutos</option><option value="30">30 minutos</option><option value="60">1 hora</option><option value="0">Desativado</option></select>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">⬇</span><div><h3>Backup criptografado</h3><p class="muted">Baixe seus dados em um arquivo JSON protegido pelo seu PIN.</p></div></div>
+            <div><span class="settings-icon">⬇</span><div><h3>Backup JSON</h3><p class="muted">Baixe uma cópia dos seus dados. O acesso ao aplicativo é protegido pela sua conta Google.</p></div></div>
             <button id="backupBtn" class="btn soft">Exportar backup</button>
           </article>
           <article class="panel settings-card">
-            <div><span class="settings-icon">⬆</span><div><h3>Restaurar backup</h3><p class="muted">Importe um JSON criptografado de outro dispositivo.</p></div></div>
+            <div><span class="settings-icon">⬆</span><div><h3>Restaurar backup</h3><p class="muted">Restaure uma cópia JSON criada pelo Stop Gastos.</p></div></div>
             <label class="btn soft file-btn">Importar JSON<input id="restoreInput" type="file" accept=".json,application/json" /></label>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">🔒</span><div><h3>Bloquear agora</h3><p class="muted">Encerra a sessão e remove a chave da memória.</p></div></div>
-            <button id="lockBtn" class="btn soft">Bloquear cofre</button>
           </article>
           <article class="panel settings-card">
             <div><span class="settings-icon">✦</span><div><h3>Dados de demonstração</h3><p class="muted">Carrega exemplos para explorar todas as telas.</p></div></div>
@@ -544,11 +586,7 @@
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar categoria</button></div>
       </form>
 
-      <form id="backupPinForm" class="modal-form" hidden>
-        <p class="muted span-2">Digite o PIN usado no arquivo de backup para descriptografá-lo.</p>
-        <label class="field span-2">PIN do backup<input id="backupImportPin" type="password" required /></label>
-        <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Restaurar backup</button></div>
-      </form>
+
     </div>
   </div>
 

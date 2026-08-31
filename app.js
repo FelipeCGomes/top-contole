@@ -565,6 +565,7 @@ function bindEvents(){
 
   $('#transactionForm').addEventListener('submit', saveTransactionForm);
   $('#recurringForm').addEventListener('submit', saveRecurringForm);
+  $('#incomeSourceForm').addEventListener('submit', saveIncomeSourceForm);
   $('#budgetForm').addEventListener('submit', saveBudgetForm);
   $('#goalForm').addEventListener('submit', saveGoalForm);
   $('#shoppingListForm').addEventListener('submit', saveShoppingListForm);
@@ -921,7 +922,7 @@ function navigate(name){
   if(name === 'calendar') renderCalendar();
   if(name === 'reports') renderReports();
   if(name === 'family') refreshFamilyData();
-  if(name === 'settings'){ syncSettingsFields(); renderCategoryManager(); }
+  if(name === 'settings'){ syncSettingsFields(); renderCategoryManager(); renderIncomeSources(); }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -940,6 +941,7 @@ function renderAll(){
   renderCards();
   renderBills();
   renderRecurring();
+  renderIncomeSources();
   renderShoppingLists();
   renderBudgets();
   renderGoals();
@@ -2278,7 +2280,6 @@ function openModal(type,data){
     $('#recurringForm').hidden = false;
     $('#recurringForm').reset();
     $('#recurringId').value = data ? data.id : '';
-    setRadio('recType',data ? data.type : 'expense');
     $('#recDescription').value = data ? data.description : '';
     $('#recKind').value = data ? (data.kind || 'fixed') : 'fixed';
     $('#recAmount').value = data ? data.amount : '';
@@ -2288,6 +2289,19 @@ function openModal(type,data){
     $('#recCard').value = data ? (data.cardId || '') : '';
     $('#recActive').checked = data ? data.active !== false : true;
     updateRecurringPaymentFields();
+  }
+  if(type === 'incomeSource'){
+    $('#modalTitle').textContent=data ? 'Editar renda recorrente' : 'Nova renda recorrente';
+    $('#modalEyebrow').textContent=data ? 'EDITAR RENDA' : 'RENDA';
+    $('#incomeSourceForm').hidden=false;
+    $('#incomeSourceForm').reset();
+    $('#incomeSourceId').value=data ? data.id : '';
+    $('#incomeSourceDescription').value=data ? data.description : '';
+    $('#incomeSourceKind').value=data ? (data.kind || 'salary') : 'salary';
+    $('#incomeSourceAmount').value=data ? Number(data.amount || 0) : '';
+    $('#incomeSourceDay').value=data ? Number(data.day || 5) : 5;
+    $('#incomeSourceAccount').value=data ? (data.accountId || '') : '';
+    $('#incomeSourceActive').checked=data ? data.active!==false : true;
   }
   if(type === 'shoppingList'){
     $('#modalTitle').textContent='Nova lista de compras';
@@ -2337,12 +2351,14 @@ function openModal(type,data){
     $('#cardForm').reset();
     $('#cardId').value = data ? data.id : '';
     $('#cardName').value = data ? data.name : '';
+    $('#cardType').value = data ? (data.cardType || 'credit') : 'credit';
     $('#cardBrand').value = data ? (data.brand || 'Visa') : 'Visa';
     $('#cardLimit').value = data ? Number(data.limit || 0) : '';
     $('#cardClosingDay').value = data ? Number(data.closingDay || 3) : 3;
     $('#cardDueDay').value = data ? Number(data.dueDay || 10) : 10;
     $('#cardAccount').value = data ? (data.accountId || '') : '';
     $('#cardColor').value = data ? (data.color || '#141b34') : '#141b34';
+    updateCardTypeFields();
   }
   if(type === 'bill'){
     $('#modalTitle').textContent = data ? 'Editar conta prevista' : 'Nova conta a pagar/receber';
@@ -2383,7 +2399,7 @@ function openModal(type,data){
 }
 
 function closeModalForms(){
-  ['transactionForm','recurringForm','shoppingListForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm'].forEach(function(id){
+  ['transactionForm','recurringForm','incomeSourceForm','shoppingListForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm'].forEach(function(id){
     const el=$('#'+id); if(el) el.hidden = true;
   });
 }
@@ -4486,6 +4502,7 @@ function bindV2Events(){
   });
   $('#accountForm').addEventListener('submit',saveAccountForm);
   $('#cardForm').addEventListener('submit',saveCardForm);
+  $('#cardType').addEventListener('change',updateCardTypeFields);
   $('#billForm').addEventListener('submit',saveBillForm);
   $('#transferForm').addEventListener('submit',saveTransferForm);
   $('#categoryForm').addEventListener('submit',saveCategoryForm);
@@ -4514,7 +4531,7 @@ function populateFinanceSelects(){
     return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';
   }).join('');
 
-  ['txAccount','cardAccount','billAccount'].forEach(function(id){
+  ['txAccount','cardAccount','billAccount','incomeSourceAccount'].forEach(function(id){
     const el=$('#'+id);
     if(!el) return;
     const current=el.value;

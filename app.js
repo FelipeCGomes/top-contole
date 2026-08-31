@@ -3025,7 +3025,19 @@ async function handleCloudUser(user){
     }
 
     try{
-      const remote=await cloud.pullState();
+      let remote=null;
+
+      if(navigator.onLine){
+        try{
+          remote=await cloud.pullStateFromServer();
+        }catch(serverError){
+          console.warn('Stop Gastos server-first read failed, using SDK cache:',serverError);
+          remote=await cloud.pullState();
+        }
+      }else{
+        remote=await cloud.pullState();
+      }
+
       const source=applyBestState(local,remote);
 
       if(source==='empty'){

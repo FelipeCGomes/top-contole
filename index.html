@@ -848,10 +848,10 @@
         <label class="field">Valor<input id="txAmount" required type="number" min="0.01" step="0.01" placeholder="0,00" /></label>
         <label class="field">Data<input id="txDate" required type="date" /></label>
         <label class="field">Categoria<select id="txCategory" required></select></label>
-        <label class="field">Pagamento<select id="txPayment"><option>Pix</option><option>Cartão de crédito</option><option>Cartão de débito</option><option>Dinheiro</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label class="field">Pagamento<select id="txPayment"><option>Pix</option><option>Cartão de crédito</option><option>Vale-refeição</option><option>Vale-alimentação</option><option>Vale-combustível</option><option>Cartão de débito</option><option>Dinheiro</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
         <label class="field">Conta / carteira<select id="txAccount"></select></label>
         <div id="creditFields" class="credit-fields span-2">
-          <label class="field">Cartão<select id="txCard"></select></label>
+          <label class="field">Cartão / benefício<select id="txCard"></select></label>
           <label class="field">Quantidade de parcelas<input id="txInstallments" type="number" min="1" max="60" step="1" value="1" /></label>
           <div id="installmentPreview" class="installment-preview span-2">À vista</div>
         </div>
@@ -871,7 +871,7 @@
         <label class="field">Valor<input id="recAmount" required type="number" min="0.01" step="0.01" /></label>
         <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
         <label class="field">Categoria<select id="recCategory" required></select></label>
-        <label class="field">Pagamento<select id="recPayment"><option>Débito automático</option><option>Pix</option><option>Cartão de crédito</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label class="field">Pagamento<select id="recPayment"><option>Débito automático</option><option>Pix</option><option>Cartão de crédito</option><option>Vale-refeição</option><option>Vale-alimentação</option><option>Vale-combustível</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
         <label id="recCardWrap" class="field recurring-card-field" hidden>Cartão vinculado
           <select id="recCard"><option value="">Selecione um cartão</option></select>
           <small class="field-help">O custo será lançado automaticamente na fatura deste cartão.</small>

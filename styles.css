@@ -1919,14 +1919,31 @@ body.is-loading{cursor:wait}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .modal-head h3{margin:4px 0 0;font-size:16px}
 .modal-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.recurring-card-field{
-  padding:9px 10px;
+.recurring-credit-options{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  padding:12px;
   border:1px solid rgba(123,97,255,.22);
-  border-radius:11px;
+  border-radius:12px;
   background:rgba(123,97,255,.055);
 }
-.recurring-card-field[hidden]{display:none!important}
+.recurring-credit-options[hidden]{display:none!important}
+.recurring-card-field,.recurring-installments-field{
+  min-width:0;
+}
+.recurring-installments-field[hidden]{display:none!important}
+.recurring-credit-options .installment-preview{grid-column:1/-1}
 .field-help{margin-top:4px;color:var(--muted);font-size:7px;line-height:1.4}
+.rec-installment-info{
+  display:block;
+  width:max-content;
+  max-width:100%;
+  margin:5px 0 2px;
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.4;
+}
 .rec-payment-line{
   margin:8px 0 2px;
   width:max-content;
@@ -2293,6 +2310,8 @@ body.is-loading{cursor:wait}
   .modal-backdrop{padding:10px}
   .modal{padding:15px;border-radius:16px}
   .modal-form{grid-template-columns:1fr}
+  .recurring-credit-options{grid-template-columns:1fr}
+  .recurring-credit-options .installment-preview{grid-column:1}
   .modal-form .span-2,.type-switch,.credit-fields{grid-column:span 1}
   .type-switch{grid-template-columns:repeat(2,1fr)}
   .credit-fields{grid-template-columns:1fr}

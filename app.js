@@ -3083,10 +3083,17 @@ async function handleCloudUser(user){
       await refreshFamilyData();
 
       if(cloudSyncPending){
-        setCloudStatus('syncing','Alterações pendentes · sincronização automática em 10s');
+        setCloudStatus(
+          navigator.onLine?'syncing':'offline',
+          navigator.onLine
+            ? 'Alterações pendentes · sincronização automática em 10s'
+            : 'Offline · alterações pendentes'
+        );
+      }else if(remote?.fromCache){
+        setCloudStatus('offline','Dados carregados do cache do Firestore · aguardando servidor');
       }else{
         cloudLastSyncedAt=new Date();
-        setCloudStatus('synced','Dados carregados do Firestore');
+        setCloudStatus('synced','Dados confirmados pelo Firestore');
       }
     }catch(err){
       console.error('Stop Gastos Firestore load:',err);

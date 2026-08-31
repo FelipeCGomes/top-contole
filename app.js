@@ -68,7 +68,7 @@ const pageMeta = {
 };
 
 const $ = function(sel, root){ return (root || document).querySelector(sel); };
-const $ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
+const $$ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
 
 let loadingDepth=0;
 

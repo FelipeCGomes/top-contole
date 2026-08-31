@@ -4857,6 +4857,96 @@ function cardTypeLabel(type){
   return labels[type] || 'Cartão de crédito';
 }
 
+
+function defaultCardColor(type){
+  const colors={
+    credit:'#141b34',
+    meal:'#e97824',
+    food:'#16866f',
+    fuel:'#2f6fd6',
+    benefit:'#7357d8'
+  };
+  return colors[type] || colors.credit;
+}
+
+function normalizeCardHex(value,fallback='#141b34'){
+  const text=String(value || '').trim();
+  if(/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+  if(/^#[0-9a-f]{3}$/i.test(text)){
+    return '#'+text.slice(1).split('').map(function(ch){return ch+ch;}).join('').toLowerCase();
+  }
+  return fallback;
+}
+
+function mixCardColor(hex,target,amount){
+  const source=normalizeCardHex(hex);
+  const dest=normalizeCardHex(target);
+  const ratio=Math.max(0,Math.min(1,Number(amount || 0)));
+
+  const parse=function(value){
+    return [
+      parseInt(value.slice(1,3),16),
+      parseInt(value.slice(3,5),16),
+      parseInt(value.slice(5,7),16)
+    ];
+  };
+
+  const a=parse(source);
+  const b=parse(dest);
+  const mixed=a.map(function(channel,index){
+    return Math.round(channel+(b[index]-channel)*ratio);
+  });
+
+  return '#'+mixed.map(function(channel){
+    return channel.toString(16).padStart(2,'0');
+  }).join('');
+}
+
+function cardVisualTheme(card){
+  const base=normalizeCardHex(card?.color,defaultCardColor(card?.cardType || 'credit'));
+  const r=parseInt(base.slice(1,3),16)/255;
+  const g=parseInt(base.slice(3,5),16)/255;
+  const b=parseInt(base.slice(5,7),16)/255;
+
+  const linear=function(channel){
+    return channel<=0.03928
+      ? channel/12.92
+      : Math.pow((channel+0.055)/1.055,2.4);
+  };
+
+  const luminance=(0.2126*linear(r))+(0.7152*linear(g))+(0.0722*linear(b));
+  const light=luminance>0.46;
+  const fg=light ? '#101827' : '#ffffff';
+  const muted=light ? 'rgba(16,24,39,.66)' : 'rgba(255,255,255,.72)';
+  const track=light ? 'rgba(16,24,39,.14)' : 'rgba(255,255,255,.16)';
+  const border=light ? 'rgba(16,24,39,.13)' : 'rgba(255,255,255,.13)';
+  const second=light
+    ? mixCardColor(base,'#ffffff',0.28)
+    : mixCardColor(base,'#08101f',0.42);
+
+  return {
+    base,
+    second,
+    fg,
+    muted,
+    track,
+    border,
+    light
+  };
+}
+
+function cardVisualStyle(card){
+  const theme=cardVisualTheme(card);
+  return [
+    '--card-bg:'+theme.base,
+    '--card-bg-2:'+theme.second,
+    '--card-fg:'+theme.fg,
+    '--card-muted:'+theme.muted,
+    '--card-track:'+theme.track,
+    '--card-border:'+theme.border
+  ].join(';');
+}
+
 function cardMatchesPayment(card,payment){
   const target=cardPaymentType(payment);
   if(!target) return false;
@@ -4895,6 +4985,8 @@ function updateCardTypeFields(){
   const label=$('#cardLimitLabel');
   const closingInput=$('#cardClosingDay');
   const dueInput=$('#cardDueDay');
+  const color=$('#cardColor');
+  const editing=!!$('#cardId')?.value;
 
   if(closing) closing.hidden=benefit;
   if(due) due.hidden=benefit;
@@ -4903,6 +4995,14 @@ function updateCardTypeFields(){
 
   if(closingInput) closingInput.required=!benefit;
   if(dueInput) dueInput.required=!benefit;
+
+  if(color && !editing){
+    const current=normalizeCardHex(color.value,'#141b34');
+    const defaults=['#141b34','#e97824','#16866f','#2f6fd6','#7357d8'];
+    if(defaults.includes(current)){
+      color.value=defaultCardColor(type);
+    }
+  }
 }
 
 function updateRecurringPaymentFields(){
@@ -5113,8 +5213,10 @@ function renderCards(){
       ? 'Benefício · '+cardTypeLabel(type)
       : 'Fecha dia '+Number(card.closingDay||1)+' · vence dia '+Number(card.dueDay||10);
 
-    return '<article class="credit-card animated-card '+(benefit?'benefit-card':'')+'" style="--card-bg:'+esc(card.color||'#141b34')+'">'+
-      '<div class="credit-top"><span>'+esc(card.brand||'Cartão')+' · '+esc(cardTypeLabel(type))+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+card.id+'">✎</button><button class="row-btn delete-card" data-id="'+card.id+'">×</button></div></div>'+
+    const visual=cardVisualTheme(card);
+
+    return '<article class="credit-card animated-card '+(benefit?'benefit-card ':'')+(visual.light?'light-card':'dark-card')+'" style="'+esc(cardVisualStyle(card))+'">'+
+      '<div class="credit-top"><span>'+esc(card.brand||'Cartão')+' · '+esc(cardTypeLabel(type))+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+card.id+'" aria-label="Editar cartão">✎</button><button class="row-btn delete-card" data-id="'+card.id+'" aria-label="Excluir cartão">×</button></div></div>'+
       '<h4>'+esc(card.name)+'</h4>'+
       '<div class="credit-limit"><span>'+(benefit?'Consumo de '+shortMonth(selectedMonth):'Fatura de '+shortMonth(selectedMonth))+'</span><strong>'+money(periodValue)+'</strong></div>'+
       '<div class="progress"><i style="width:'+pct+'%"></i></div>'+

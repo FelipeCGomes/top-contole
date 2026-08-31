@@ -103,6 +103,28 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - `families/{familyId}/members/{uid}`: vínculo, papel e status
 - `familyRequests/{requestId}`: convites direcionados
 
+## Mapa de telas e Firestore
+
+| Tela | Fonte persistida | Caminho principal |
+| --- | --- | --- |
+| Lançamentos | `transactions` | `users/{uid}/data/transactions` |
+| Família | família, membros e convites | `families/{familyId}`, `families/{familyId}/members/{uid}`, `familyRequests/{requestId}` |
+| Contas | `accounts` | `users/{uid}/data/accounts` |
+| Cartões | `cards` | `users/{uid}/data/cards` |
+| Contas a pagar/receber | `bills` | `users/{uid}/data/bills` |
+| Custos fixos | `recurring` e lançamentos gerados | `users/{uid}/data/recurring` e `users/{uid}/data/transactions` |
+| Lista de compras pessoal | `shoppingLists` | `users/{uid}/data/shoppingLists` |
+| Lista de compras familiar | listas/itens compartilhados | `families/{familyId}/shoppingLists/{listId}` e `.../items/{itemId}` |
+| Orçamentos | `budgets` | `users/{uid}/data/budgets` |
+| Metas | `goals` | `users/{uid}/data/goals` |
+| Calendário | visão derivada | usa `transactions` e `bills`; não cria documento próprio |
+| Relatórios | visão derivada | calcula sobre os módulos financeiros; não cria documento próprio |
+| Configurações | `settings` | `users/{uid}/data/settings` |
+| Categorias personalizadas | `categories` | `users/{uid}/data/categories` |
+| Transferências | `transfers` | `users/{uid}/data/transfers` |
+
+Nos documentos modulares, o conteúdo do módulo fica no campo `value`. Exemplo: o limite mensal está em `users/{uid}/data/settings -> value.monthlyBudget`.
+
 ## Estados do vínculo familiar
 
 - `pending`: convite enviado e aguardando resposta

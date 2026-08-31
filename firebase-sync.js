@@ -673,6 +673,164 @@ function watchFamilyMembers(familyId,callback){
   });
 }
 
+
+function familyShoppingListsRef(familyId){
+  return collection(db,'families',familyId,'shoppingLists');
+}
+
+function familyShoppingListRef(familyId,listId){
+  return doc(db,'families',familyId,'shoppingLists',listId);
+}
+
+function familyShoppingItemsRef(familyId,listId){
+  return collection(db,'families',familyId,'shoppingLists',listId,'items');
+}
+
+function familyShoppingItemRef(familyId,listId,itemId){
+  return doc(db,'families',familyId,'shoppingLists',listId,'items',itemId);
+}
+
+async function createFamilyShoppingList(name,store=''){
+  requireUser();
+  const context=await getFamilyContext();
+  if(!context.family) throw new Error('Você precisa participar de uma família para criar uma lista compartilhada.');
+
+  const cleanName=String(name || '').trim();
+  if(!cleanName) throw new Error('Informe o nome da lista.');
+
+  const ref=doc(familyShoppingListsRef(context.family.id));
+  const clientUpdatedAt=new Date().toISOString();
+
+  await setDoc(ref,{
+    id:ref.id,
+    familyId:context.family.id,
+    name:cleanName,
+    store:String(store || '').trim(),
+    createdBy:currentUser.uid,
+    createdByName:currentUser.displayName || currentUser.email || '',
+    createdAt:serverTimestamp(),
+    updatedBy:currentUser.uid,
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt
+  });
+
+  return {
+    id:ref.id,
+    familyId:context.family.id,
+    name:cleanName,
+    store:String(store || '').trim(),
+    createdBy:currentUser.uid,
+    createdByName:currentUser.displayName || currentUser.email || '',
+    clientUpdatedAt,
+    items:[]
+  };
+}
+
+function watchFamilyShoppingLists(familyId,callback){
+  requireUser();
+  if(!familyId) return ()=>{};
+
+  return onSnapshot(familyShoppingListsRef(familyId),snapshot=>{
+    const lists=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+    lists.sort((a,b)=>{
+      const av=String(a.clientUpdatedAt || '');
+      const bv=String(b.clientUpdatedAt || '');
+      return bv.localeCompare(av) || String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    callback(lists);
+  },error=>{
+    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
+      detail:{message:error.message || String(error)}
+    }));
+  });
+}
+
+function watchFamilyShoppingItems(familyId,listId,callback){
+  requireUser();
+  if(!familyId || !listId) return ()=>{};
+
+  return onSnapshot(familyShoppingItemsRef(familyId,listId),snapshot=>{
+    const items=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+    items.sort((a,b)=>{
+      const ao=Number(a.order || 0);
+      const bo=Number(b.order || 0);
+      return ao-bo || String(a.createdAt?.seconds || '').localeCompare(String(b.createdAt?.seconds || ''));
+    });
+    callback(items);
+  },error=>{
+    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
+      detail:{message:error.message || String(error)}
+    }));
+  });
+}
+
+async function saveFamilyShoppingItem(familyId,listId,item){
+  requireUser();
+  if(!familyId || !listId || !item?.id) throw new Error('Item de compra inválido.');
+
+  const ref=familyShoppingItemRef(familyId,listId,item.id);
+  const existing=await getDoc(ref);
+  const payload={
+    product:String(item.product || '').trim(),
+    qty:Math.max(0,Number(item.qty || 0)),
+    unitPrice:Math.max(0,Number(item.unitPrice || 0)),
+    order:Math.max(0,Number(item.order || 0)),
+    updatedBy:currentUser.uid,
+    updatedByName:currentUser.displayName || currentUser.email || '',
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt:new Date().toISOString()
+  };
+
+  if(!existing.exists()){
+    payload.createdBy=currentUser.uid;
+    payload.createdByName=currentUser.displayName || currentUser.email || '';
+    payload.createdAt=serverTimestamp();
+  }
+
+  await setDoc(ref,payload,{merge:true});
+  await setDoc(familyShoppingListRef(familyId,listId),{
+    updatedBy:currentUser.uid,
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt:new Date().toISOString()
+  },{merge:true});
+
+  return {id:item.id,...payload};
+}
+
+async function deleteFamilyShoppingItem(familyId,listId,itemId){
+  requireUser();
+  if(!familyId || !listId || !itemId) return;
+  await deleteDoc(familyShoppingItemRef(familyId,listId,itemId));
+  await setDoc(familyShoppingListRef(familyId,listId),{
+    updatedBy:currentUser.uid,
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt:new Date().toISOString()
+  },{merge:true});
+}
+
+async function deleteFamilyShoppingList(familyId,listId){
+  requireUser();
+  if(!familyId || !listId) return;
+
+  const items=await getDocs(familyShoppingItemsRef(familyId,listId));
+  const batch=writeBatch(db);
+  items.docs.forEach(item=>batch.delete(item.ref));
+  batch.delete(familyShoppingListRef(familyId,listId));
+  await batch.commit();
+}
+
+async function deleteAllFamilyShoppingData(familyId){
+  if(!familyId) return;
+  const lists=await getDocs(familyShoppingListsRef(familyId));
+  for(const list of lists.docs){
+    const items=await getDocs(familyShoppingItemsRef(familyId,list.id));
+    const batch=writeBatch(db);
+    items.docs.forEach(item=>batch.delete(item.ref));
+    batch.delete(list.ref);
+    await batch.commit();
+  }
+}
+
 async function getFamilyStates(){
   requireUser();
   const context=await getFamilyContext();
@@ -872,6 +1030,9 @@ async function deleteCurrentAccount(){
   }
 
   if(context.family){
+    if(context.family.ownerUid===uid){
+      await deleteAllFamilyShoppingData(context.family.id);
+    }
     await deleteDoc(doc(db,'families',context.family.id,'members',uid));
     if(context.family.ownerUid===uid){
       await deleteDoc(doc(db,'families',context.family.id));
@@ -952,6 +1113,12 @@ globalThis.StopGastosCloud={
   getFamilyContext,
   watchFamilyMembers,
   getFamilyStates,
+  createFamilyShoppingList,
+  watchFamilyShoppingLists,
+  watchFamilyShoppingItems,
+  saveFamilyShoppingItem,
+  deleteFamilyShoppingItem,
+  deleteFamilyShoppingList,
   removeFamilyMember,
   getAccountDeletionStatus,
   transferFamilyOwnership,

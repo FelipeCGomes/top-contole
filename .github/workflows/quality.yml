@@ -173,6 +173,34 @@ jobs:
           console.log('Recurring card integration OK');
           NODE
 
+      - name: Validate shopping list module
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+
+          const checks = [
+            ['shopping view exists', html.includes('id="view-shopping"')],
+            ['shopping nav exists', html.includes('data-nav="shopping"')],
+            ['four summary cards exist',
+              ['shoppingProductCount','shoppingItemCount','shoppingAverage','shoppingTotal'].every(id => html.includes('id="' + id + '"'))],
+            ['shopping list state exists', /shoppingLists:\[\]/.test(js)],
+            ['shopping state normalized', /shoppingLists:Array\.isArray\(data\.shoppingLists\)/.test(js)],
+            ['shopping renderer exists', /function\s+renderShoppingLists\s*\(/.test(js)],
+            ['inline pricing exists', html.includes('data-shopping-field') || /data-shopping-field/.test(js)],
+            ['weighted average exists', /pricedQuantity>0\s*\?\s*total\/pricedQuantity/.test(js)],
+            ['shopping autosave exists', /function\s+scheduleShoppingAutosave\s*\(/.test(js)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Shopping module validation failed:', failed);
+            process.exit(1);
+          }
+          console.log('Shopping list module OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'

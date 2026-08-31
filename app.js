@@ -53,6 +53,7 @@ const pageMeta = {
   dashboard:['Dashboard','Visão geral das suas finanças'],
   transactions:['Lançamentos','Todas as receitas e despesas'],
   recurring:['Custos fixos','Recorrências mensais automáticas'],
+  shopping:['Lista de compras','Planeje produtos, quantidades e acompanhe o custo no mercado'],
   budgets:['Orçamentos','Planeje seus limites por categoria'],
   goals:['Metas','Acompanhe seus objetivos financeiros'],
   calendar:['Calendário','Movimentações organizadas por dia'],
@@ -354,6 +355,8 @@ function makeInitialState(){
     categories:clone(defaultsCache.categories || fallbackCategories),
     transactions:[],
     recurring:[],
+    shoppingLists:[],
+    shoppingActiveListId:'',
     budgets:[],
     goals:[],
     accounts:[],
@@ -381,6 +384,12 @@ function normalizeState(data){
     categories:Array.isArray(data.categories) && data.categories.length ? data.categories : base.categories,
     transactions:Array.isArray(data.transactions) ? data.transactions : [],
     recurring:Array.isArray(data.recurring) ? data.recurring : [],
+    shoppingLists:Array.isArray(data.shoppingLists) ? data.shoppingLists.map(function(list){
+      return Object.assign({},list,{
+        items:Array.isArray(list && list.items) ? list.items : []
+      });
+    }) : [],
+    shoppingActiveListId:typeof data.shoppingActiveListId==='string' ? data.shoppingActiveListId : '',
     budgets:Array.isArray(data.budgets) ? data.budgets : [],
     goals:Array.isArray(data.goals) ? data.goals : [],
     accounts:Array.isArray(data.accounts) ? data.accounts : [],
@@ -433,6 +442,16 @@ function bindEvents(){
   $('#recurringForm').addEventListener('submit', saveRecurringForm);
   $('#budgetForm').addEventListener('submit', saveBudgetForm);
   $('#goalForm').addEventListener('submit', saveGoalForm);
+  $('#shoppingListForm').addEventListener('submit', saveShoppingListForm);
+  $('#shoppingItemForm').addEventListener('submit', addShoppingItem);
+  $('#shoppingListSelect').addEventListener('change', async function(e){
+    appState.shoppingActiveListId=e.target.value || '';
+    renderShoppingLists();
+    await saveVault();
+  });
+  $('#deleteShoppingListBtn').addEventListener('click', deleteActiveShoppingList);
+  $('#shoppingGridBody').addEventListener('input', handleShoppingGridInput);
+  $('#shoppingGridBody').addEventListener('click', handleShoppingGridClick);
 
   $('#transactionSearch').addEventListener('input', renderTransactions);
   $('#transactionTypeFilter').addEventListener('change', renderTransactions);
@@ -756,6 +775,7 @@ function navigate(name){
   if(name === 'cards') renderCards();
   if(name === 'bills') renderBills();
   if(name === 'recurring') renderRecurring();
+  if(name === 'shopping') renderShoppingLists();
   if(name === 'budgets') renderBudgets();
   if(name === 'goals') renderGoals();
   if(name === 'calendar') renderCalendar();
@@ -780,6 +800,7 @@ function renderAll(){
   renderCards();
   renderBills();
   renderRecurring();
+  renderShoppingLists();
   renderBudgets();
   renderGoals();
   renderCalendar();
@@ -995,6 +1016,318 @@ function renderRecurring(){
   });
 }
 
+
+let shoppingAutosaveTimer=null;
+
+function getActiveShoppingList(){
+  if(!appState || !Array.isArray(appState.shoppingLists) || !appState.shoppingLists.length) return null;
+
+  let list=appState.shoppingLists.find(function(x){
+    return x.id===appState.shoppingActiveListId;
+  });
+
+  if(!list){
+    list=appState.shoppingLists[0];
+    appState.shoppingActiveListId=list.id;
+  }
+
+  if(!Array.isArray(list.items)) list.items=[];
+  return list;
+}
+
+function formatShoppingQty(value){
+  const number=Number(value || 0);
+  if(!Number.isFinite(number)) return '0';
+  return number.toLocaleString(appState?.settings?.locale || 'pt-BR',{
+    minimumFractionDigits:0,
+    maximumFractionDigits:3
+  });
+}
+
+function shoppingListTotals(list){
+  const items=list && Array.isArray(list.items) ? list.items : [];
+  const products=items.length;
+  const quantity=items.reduce(function(sum,item){
+    return sum+Math.max(0,Number(item.qty || 0));
+  },0);
+  const total=items.reduce(function(sum,item){
+    const qty=Math.max(0,Number(item.qty || 0));
+    const unit=Math.max(0,Number(item.unitPrice || 0));
+    return sum+(qty*unit);
+  },0);
+  const pricedQuantity=items.reduce(function(sum,item){
+    const unit=Math.max(0,Number(item.unitPrice || 0));
+    return unit>0 ? sum+Math.max(0,Number(item.qty || 0)) : sum;
+  },0);
+  const pricedProducts=items.filter(function(item){
+    return Number(item.unitPrice || 0)>0;
+  }).length;
+
+  return {
+    products,
+    quantity,
+    total,
+    average:pricedQuantity>0 ? total/pricedQuantity : 0,
+    pricedProducts
+  };
+}
+
+function renderShoppingSummary(list){
+  const totals=shoppingListTotals(list);
+  $('#shoppingProductCount').textContent=String(totals.products);
+  $('#shoppingItemCount').textContent=formatShoppingQty(totals.quantity);
+  $('#shoppingAverage').textContent=money(totals.average);
+  $('#shoppingTotal').textContent=money(totals.total);
+  $('#shoppingPriceProgress').textContent=totals.pricedProducts+'/'+totals.products+' com preço';
+}
+
+function shoppingListDateLabel(value){
+  if(!value) return '';
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+function renderShoppingLists(){
+  if(!appState || !$('#shoppingListSelect')) return;
+
+  const lists=appState.shoppingLists || [];
+  const select=$('#shoppingListSelect');
+  const deleteBtn=$('#deleteShoppingListBtn');
+  const addForm=$('#shoppingItemForm');
+  const noList=$('#shoppingNoList');
+  const gridWrap=$('#shoppingGridWrap');
+  const emptyItems=$('#shoppingItemsEmpty');
+  const body=$('#shoppingGridBody');
+
+  if(!lists.length){
+    appState.shoppingActiveListId='';
+    select.innerHTML='<option value="">Nenhuma lista</option>';
+    select.disabled=true;
+    deleteBtn.hidden=true;
+    addForm.hidden=true;
+    noList.hidden=false;
+    gridWrap.hidden=true;
+    $('#shoppingListTitle').textContent='Nenhuma lista selecionada';
+    $('#shoppingListMeta').textContent='Crie uma lista para começar.';
+    $('#shoppingAutosaveStatus').textContent='Salvamento automático';
+    renderShoppingSummary(null);
+    body.innerHTML='';
+    return;
+  }
+
+  const active=getActiveShoppingList();
+  select.disabled=false;
+  select.innerHTML=lists.map(function(list){
+    const suffix=list.store ? ' · '+list.store : '';
+    return '<option value="'+esc(list.id)+'">'+esc(list.name+suffix)+'</option>';
+  }).join('');
+  select.value=active.id;
+
+  deleteBtn.hidden=false;
+  addForm.hidden=false;
+  noList.hidden=true;
+  gridWrap.hidden=false;
+
+  $('#shoppingListTitle').textContent=active.name || 'Lista de compras';
+  const meta=[];
+  if(active.store) meta.push(active.store);
+  if(active.createdAt) meta.push('Criada em '+shoppingListDateLabel(active.createdAt));
+  $('#shoppingListMeta').textContent=meta.join(' · ') || 'Preencha os preços conforme compra os produtos.';
+
+  const items=active.items || [];
+  emptyItems.hidden=items.length!==0;
+
+  body.innerHTML=items.map(function(item,index){
+    const qty=Math.max(0,Number(item.qty || 0));
+    const unit=Math.max(0,Number(item.unitPrice || 0));
+    const total=qty*unit;
+    const unitValue=unit>0 ? unit.toFixed(2) : '';
+
+    return '<div class="shopping-grid-row" data-shopping-item="'+esc(item.id)+'">'+
+      '<div class="shopping-cell shopping-cell-order" data-label="Ord"><span>'+(index+1)+'</span></div>'+
+      '<div class="shopping-cell shopping-cell-product" data-label="Produto"><input class="shopping-inline-input" data-shopping-field="product" maxlength="80" value="'+esc(item.product || '')+'" placeholder="Produto" /></div>'+
+      '<div class="shopping-cell shopping-cell-qty" data-label="Qtd"><input class="shopping-inline-input shopping-qty-input" data-shopping-field="qty" type="number" min="0.001" step="0.001" value="'+esc(String(qty || 1))+'" /></div>'+
+      '<div class="shopping-cell shopping-cell-unit" data-label="Valor Unit."><div class="money-input shopping-row-money"><span>R$</span><input class="shopping-inline-input" data-shopping-field="unitPrice" type="number" min="0" step="0.01" value="'+esc(unitValue)+'" placeholder="0,00" /></div></div>'+
+      '<div class="shopping-cell shopping-cell-total" data-label="Valor Total"><strong data-shopping-row-total>'+money(total)+'</strong></div>'+
+      '<div class="shopping-cell shopping-cell-actions"><button class="row-btn shopping-delete-item" type="button" data-shopping-delete="'+esc(item.id)+'" title="Remover item">×</button></div>'+
+    '</div>';
+  }).join('');
+
+  renderShoppingSummary(active);
+}
+
+async function saveShoppingListForm(e){
+  return withLoading('Criando lista…','Preparando sua nova lista de compras.',async function(){
+    e.preventDefault();
+
+    const name=$('#shoppingListName').value.trim();
+    const store=$('#shoppingListStore').value.trim();
+
+    if(!name){
+      toast('Informe um nome para a lista.','error');
+      return;
+    }
+
+    const now=new Date().toISOString();
+    const list={
+      id:uid('shop'),
+      name,
+      store,
+      items:[],
+      createdAt:now,
+      updatedAt:now
+    };
+
+    appState.shoppingLists.unshift(list);
+    appState.shoppingActiveListId=list.id;
+    logAudit('shopping-list-create',name);
+
+    await commitStateChange();
+    toast('Lista de compras criada.','success');
+    navigate('shopping');
+
+    setTimeout(function(){
+      const field=$('#shoppingItemProduct');
+      if(field) field.focus();
+    },80);
+  });
+}
+
+async function addShoppingItem(e){
+  e.preventDefault();
+
+  const list=getActiveShoppingList();
+  if(!list){
+    toast('Crie uma lista antes de adicionar produtos.','info');
+    return;
+  }
+
+  const product=$('#shoppingItemProduct').value.trim();
+  const qty=Math.max(0,Number($('#shoppingItemQty').value || 0));
+  const unitPrice=Math.max(0,Number($('#shoppingItemUnit').value || 0));
+
+  if(!product){
+    toast('Informe o produto.','error');
+    $('#shoppingItemProduct').focus();
+    return;
+  }
+  if(!(qty>0)){
+    toast('Informe uma quantidade maior que zero.','error');
+    return;
+  }
+
+  list.items.push({
+    id:uid('shopitem'),
+    product,
+    qty,
+    unitPrice,
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  });
+  list.updatedAt=new Date().toISOString();
+
+  $('#shoppingItemProduct').value='';
+  $('#shoppingItemQty').value='1';
+  $('#shoppingItemUnit').value='';
+
+  renderShoppingLists();
+  scheduleShoppingAutosave();
+  $('#shoppingItemProduct').focus();
+}
+
+function scheduleShoppingAutosave(){
+  const status=$('#shoppingAutosaveStatus');
+  if(status){
+    status.textContent='Salvando…';
+    status.classList.add('saving');
+  }
+
+  clearTimeout(shoppingAutosaveTimer);
+  shoppingAutosaveTimer=setTimeout(async function(){
+    await saveVault();
+    if(status){
+      status.textContent='Salvo automaticamente';
+      status.classList.remove('saving');
+    }
+  },320);
+}
+
+function handleShoppingGridInput(e){
+  const input=e.target.closest('[data-shopping-field]');
+  if(!input) return;
+
+  const row=input.closest('[data-shopping-item]');
+  const list=getActiveShoppingList();
+  if(!row || !list) return;
+
+  const item=list.items.find(function(x){
+    return x.id===row.getAttribute('data-shopping-item');
+  });
+  if(!item) return;
+
+  const field=input.getAttribute('data-shopping-field');
+  if(field==='product'){
+    item.product=input.value;
+  }else if(field==='qty'){
+    item.qty=Math.max(0,Number(input.value || 0));
+  }else if(field==='unitPrice'){
+    item.unitPrice=Math.max(0,Number(input.value || 0));
+  }
+
+  item.updatedAt=new Date().toISOString();
+  list.updatedAt=item.updatedAt;
+
+  const totalNode=row.querySelector('[data-shopping-row-total]');
+  if(totalNode){
+    totalNode.textContent=money(
+      Math.max(0,Number(item.qty || 0))*Math.max(0,Number(item.unitPrice || 0))
+    );
+  }
+
+  renderShoppingSummary(list);
+  scheduleShoppingAutosave();
+}
+
+function handleShoppingGridClick(e){
+  const button=e.target.closest('[data-shopping-delete]');
+  if(!button) return;
+
+  const list=getActiveShoppingList();
+  if(!list) return;
+
+  const id=button.getAttribute('data-shopping-delete');
+  const item=list.items.find(function(x){return x.id===id;});
+  list.items=list.items.filter(function(x){return x.id!==id;});
+  list.updatedAt=new Date().toISOString();
+
+  renderShoppingLists();
+  scheduleShoppingAutosave();
+
+  if(item) toast(item.product+' removido da lista.','info');
+}
+
+async function deleteActiveShoppingList(){
+  const list=getActiveShoppingList();
+  if(!list) return;
+
+  const ok=await confirmDialog(
+    'Excluir lista de compras?',
+    'A lista "'+list.name+'" e todos os produtos cadastrados nela serão removidos.'
+  );
+  if(!ok) return;
+
+  await withLoading('Excluindo lista…','Removendo os produtos desta lista.',async function(){
+    appState.shoppingLists=appState.shoppingLists.filter(function(x){return x.id!==list.id;});
+    appState.shoppingActiveListId=appState.shoppingLists[0]?.id || '';
+    logAudit('shopping-list-delete',list.name);
+    renderShoppingLists();
+    await saveVault(true);
+  });
+
+  toast('Lista excluída.','success');
+}
+
 function renderBudgets(){
   if(!appState) return;
   const monthTx = transactionsForMonth(selectedMonth).filter(function(t){return t.type==='expense';});
@@ -1150,6 +1483,14 @@ function openModal(type,data){
     $('#recActive').checked = data ? data.active !== false : true;
     updateRecurringPaymentFields();
   }
+  if(type === 'shoppingList'){
+    $('#modalTitle').textContent='Nova lista de compras';
+    $('#modalEyebrow').textContent='COMPRAS';
+    $('#shoppingListForm').hidden=false;
+    $('#shoppingListForm').reset();
+    $('#shoppingListName').value='';
+    $('#shoppingListStore').value='';
+  }
   if(type === 'budget'){
     $('#modalTitle').textContent = data ? 'Editar orçamento' : 'Novo orçamento';
     $('#modalEyebrow').textContent = data ? 'EDITAR' : 'PLANEJAMENTO';
@@ -1236,7 +1577,7 @@ function openModal(type,data){
 }
 
 function closeModalForms(){
-  ['transactionForm','recurringForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm'].forEach(function(id){
+  ['transactionForm','recurringForm','shoppingListForm','budgetForm','goalForm','accountForm','cardForm','billForm','transferForm','categoryForm'].forEach(function(id){
     const el=$('#'+id); if(el) el.hidden = true;
   });
 }

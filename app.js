@@ -4744,44 +4744,150 @@ function populateFinanceSelects(){
   updateRecurringPaymentFields();
 }
 
+function cardPaymentType(payment){
+  const map={
+    'Cartão de crédito':'credit',
+    'Vale-refeição':'meal',
+    'Vale-alimentação':'food',
+    'Vale-combustível':'fuel'
+  };
+  return map[payment] || '';
+}
+
+function paymentUsesCard(payment){
+  return !!cardPaymentType(payment);
+}
+
+function isBenefitCard(card){
+  return !!card && (card.cardType || 'credit')!=='credit';
+}
+
+function cardTypeLabel(type){
+  const labels={
+    credit:'Cartão de crédito',
+    meal:'Vale-refeição',
+    food:'Vale-alimentação',
+    fuel:'Vale-combustível',
+    benefit:'Outro benefício'
+  };
+  return labels[type] || 'Cartão de crédito';
+}
+
+function cardMatchesPayment(card,payment){
+  const target=cardPaymentType(payment);
+  if(!target) return false;
+  const type=card?.cardType || 'credit';
+  if(target==='credit') return type==='credit';
+  return type===target || type==='benefit';
+}
+
+function populateCardSelectForPayment(selectId,payment){
+  const el=$('#'+selectId);
+  if(!el || !appState) return;
+
+  const current=el.value;
+  const eligible=appState.cards.filter(function(card){
+    return cardMatchesPayment(card,payment);
+  });
+
+  el.innerHTML='<option value="">Selecione um cartão</option>'+eligible.map(function(card){
+    return '<option value="'+esc(card.id)+'">'+esc(card.name+' · '+cardTypeLabel(card.cardType || 'credit'))+'</option>';
+  }).join('');
+
+  if(current && eligible.some(function(card){return card.id===current;})){
+    el.value=current;
+  }else{
+    el.value='';
+  }
+}
+
+function updateCardTypeFields(){
+  const type=$('#cardType')?.value || 'credit';
+  const benefit=type!=='credit';
+
+  const closing=$('#cardClosingWrap');
+  const due=$('#cardDueWrap');
+  const account=$('#cardAccountWrap');
+  const label=$('#cardLimitLabel');
+  const closingInput=$('#cardClosingDay');
+  const dueInput=$('#cardDueDay');
+
+  if(closing) closing.hidden=benefit;
+  if(due) due.hidden=benefit;
+  if(account) account.hidden=benefit;
+  if(label) label.textContent=benefit?'Saldo / crédito disponível':'Limite';
+
+  if(closingInput) closingInput.required=!benefit;
+  if(dueInput) dueInput.required=!benefit;
+}
+
 function updateRecurringPaymentFields(){
   const payment=$('#recPayment');
   const wrap=$('#recCardWrap');
   const card=$('#recCard');
   if(!payment || !wrap || !card) return;
 
-  const isCredit=payment.value==='Cartão de crédito';
-  wrap.hidden=!isCredit;
-  card.required=isCredit;
+  const usesCard=paymentUsesCard(payment.value);
+  wrap.hidden=!usesCard;
+  card.required=usesCard;
 
-  if(!isCredit){
+  if(!usesCard){
     card.value='';
     return;
   }
 
-  if(!appState || !appState.cards.length){
-    card.innerHTML='<option value="">Cadastre um cartão primeiro</option>';
+  populateCardSelectForPayment('recCard',payment.value);
+
+  if(!appState.cards.some(function(item){return cardMatchesPayment(item,payment.value);})){
+    card.innerHTML='<option value="">Cadastre um '+cardTypeLabel(cardPaymentType(payment.value))+' primeiro</option>';
   }
 }
 
 function updateInstallmentFields(editing){
   if(!$('#creditFields')) return;
-  const isCredit=$('#txPayment').value==='Cartão de crédito';
-  $('#creditFields').classList.toggle('show',isCredit);
-  if(!isCredit){$('#installmentPreview').textContent='À vista';return;}
+
+  const payment=$('#txPayment').value;
+  const usesCard=paymentUsesCard(payment);
+  const isCredit=payment==='Cartão de crédito';
+
+  $('#creditFields').classList.toggle('show',usesCard);
+  $('#creditFields').classList.toggle('benefit-mode',usesCard && !isCredit);
+
+  if(!usesCard){
+    $('#txCard').value='';
+    $('#txInstallments').value='1';
+    $('#installmentPreview').textContent='À vista';
+    return;
+  }
+
+  populateCardSelectForPayment('txCard',payment);
+
+  if(!isCredit){
+    $('#txInstallments').value='1';
+    const card=getCard($('#txCard').value);
+    $('#installmentPreview').textContent=card
+      ? cardTypeLabel(card.cardType || 'benefit')+' · débito no saldo do benefício'
+      : 'Selecione o cartão de benefício';
+    return;
+  }
+
   const total=Number($('#txAmount').value||0);
   const count=Math.max(1,Math.min(60,Number($('#txInstallments').value||1)));
+
   if(editing && editing.installmentCount>1){
     $('#installmentPreview').textContent='Editando apenas a parcela '+editing.installmentNo+'/'+editing.installmentCount+' · '+money(editing.amount)+' de uma compra de '+money(editing.purchaseTotal||0);
     return;
   }
+
   const each=count?total/count:0;
   const card=getCard($('#txCard').value);
   let due='';
+
   if(card && $('#txDate').value){
     const first=cardInvoiceMonth($('#txDate').value,card);
     due=' · 1ª fatura em '+monthLabel(first);
   }
+
   $('#installmentPreview').textContent=count+'x de '+money(each)+' · total '+money(total)+due;
 }
 

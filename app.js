@@ -1118,6 +1118,161 @@ function bindRowActions(){
   $$('.delete-tx').forEach(function(btn){ btn.onclick = function(){ deleteTransaction(btn.dataset.id); }; });
 }
 
+function incomeKindLabel(kind){
+  const labels={
+    salary:'Salário',
+    extra:'Renda extra',
+    freelance:'Freelance',
+    rent:'Aluguel recebido',
+    commission:'Comissão',
+    other:'Outra renda'
+  };
+  return labels[kind] || 'Outra renda';
+}
+
+function incomeKindIcon(kind){
+  const icons={
+    salary:'💼',
+    extra:'✨',
+    freelance:'💻',
+    rent:'🏠',
+    commission:'📈',
+    other:'💵'
+  };
+  return icons[kind] || '💵';
+}
+
+function renderIncomeSources(){
+  if(!appState || !$('#incomeSourcesGrid')) return;
+
+  const list=(appState.incomeSources || [])
+    .slice()
+    .sort(function(a,b){
+      return Number(a.day || 1)-Number(b.day || 1)
+        || String(a.description || '').localeCompare(String(b.description || ''),'pt-BR');
+    });
+
+  const total=list
+    .filter(function(item){return item.active!==false;})
+    .reduce(function(sum,item){return sum+Number(item.amount || 0);},0);
+
+  const summary=$('#incomeSourcesSummary');
+  if(summary){
+    summary.textContent=list.length
+      ? list.length+' fonte'+(list.length===1?'':'s')+' · '+money(total)+' por mês'
+      : 'Nenhuma renda recorrente cadastrada.';
+  }
+
+  $('#incomeSourcesEmpty').hidden=list.length!==0;
+
+  $('#incomeSourcesGrid').innerHTML=list.map(function(item){
+    const account=getAccount(item.accountId);
+    return '<article class="income-source-card animated-card '+(item.active===false?'inactive':'')+'">'+
+      '<div class="income-source-head">'+
+        '<span class="income-source-icon">'+incomeKindIcon(item.kind)+'</span>'+
+        '<div class="card-menu"><button class="row-btn edit-income-source" data-id="'+esc(item.id)+'" title="Editar">✎</button><button class="row-btn delete-income-source" data-id="'+esc(item.id)+'" title="Excluir">×</button></div>'+
+      '</div>'+
+      '<span class="income-source-kind">'+esc(incomeKindLabel(item.kind))+'</span>'+
+      '<h4>'+esc(item.description)+'</h4>'+
+      '<strong>'+money(item.amount)+'</strong>'+
+      '<div class="income-source-meta"><span>Recebe dia '+Number(item.day || 1)+'</span><span>'+(account?'🏦 '+esc(account.name):'Sem conta vinculada')+'</span></div>'+
+      '<div class="income-source-bottom"><span class="type-pill income">Renda</span><input class="toggle income-source-toggle" data-id="'+esc(item.id)+'" type="checkbox" '+(item.active!==false?'checked':'')+' /></div>'+
+    '</article>';
+  }).join('');
+
+  $('.edit-income-source').forEach(function(btn){
+    btn.onclick=function(){
+      const item=appState.incomeSources.find(function(x){return x.id===btn.dataset.id;});
+      if(item) openModal('incomeSource',item);
+    };
+  });
+
+  $('.delete-income-source').forEach(function(btn){
+    btn.onclick=function(){deleteIncomeSource(btn.dataset.id);};
+  });
+
+  $('.income-source-toggle').forEach(function(input){
+    input.onchange=async function(){
+      const item=appState.incomeSources.find(function(x){return x.id===input.dataset.id;});
+      if(!item) return;
+      item.active=input.checked;
+      item.updatedAt=new Date().toISOString();
+      logAudit('income-source-toggle',item.description);
+      await saveVault(false);
+      renderIncomeSources();
+      toast(input.checked?'Renda recorrente ativada.':'Renda recorrente pausada.','success');
+    };
+  });
+}
+
+async function saveIncomeSourceForm(e){
+  return withLoading('Salvando renda…','Atualizando suas entradas recorrentes.',async function(){
+    e.preventDefault();
+
+    const id=$('#incomeSourceId').value;
+    const existing=id
+      ? appState.incomeSources.find(function(item){return item.id===id;})
+      : null;
+
+    const record={
+      id:id || uid('inc'),
+      kind:$('#incomeSourceKind').value || 'salary',
+      description:$('#incomeSourceDescription').value.trim(),
+      amount:Number($('#incomeSourceAmount').value),
+      day:Math.max(1,Math.min(31,Number($('#incomeSourceDay').value || 1))),
+      accountId:$('#incomeSourceAccount').value || '',
+      active:$('#incomeSourceActive').checked,
+      createdAt:existing?.createdAt || new Date().toISOString(),
+      updatedAt:new Date().toISOString()
+    };
+
+    if(!record.description || !(record.amount>0)){
+      toast('Preencha descrição e valor da renda.','error');
+      return;
+    }
+
+    const index=appState.incomeSources.findIndex(function(item){return item.id===id;});
+    if(index>=0){
+      appState.incomeSources[index]=Object.assign({},appState.incomeSources[index],record);
+    }else{
+      appState.incomeSources.push(record);
+    }
+
+    syncRecurringTransactionForMonth({
+      id:record.id,
+      type:'income',
+      description:record.description,
+      amount:record.amount,
+      day:record.day,
+      accountId:record.accountId,
+      active:record.active,
+      incomeKind:record.kind,
+      sourceType:'incomeSource'
+    },selectedMonth);
+
+    logAudit(index>=0?'income-source-update':'income-source-create',record.description);
+    await commitStateChange();
+    toast(index>=0?'Renda recorrente atualizada.':'Renda recorrente criada.','success');
+  });
+}
+
+async function deleteIncomeSource(id){
+  const item=appState.incomeSources.find(function(x){return x.id===id;});
+  if(!item) return;
+
+  const ok=await confirmDialog(
+    'Excluir renda recorrente?',
+    'Os lançamentos já gerados serão mantidos. "'+item.description+'" deixará de gerar novas entradas.'
+  );
+  if(!ok) return;
+
+  appState.incomeSources=appState.incomeSources.filter(function(x){return x.id!==id;});
+  logAudit('income-source-delete',item.description);
+  await saveVault(false);
+  renderAll();
+  toast('Renda recorrente excluída.','success');
+}
+
 function renderRecurring(){
   if(!appState) return;
 

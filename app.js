@@ -5330,10 +5330,23 @@ function renderSmartFinance(){
     const existing=transactionsForMonth(m),existingInc=sumByType(existing,'income'),existingExp=sumByType(existing,'expense');
     let inc=existingInc,exp=existingExp;
     appState.recurring.filter(function(r){return r.active!==false;}).forEach(function(r){
-      const key=r.id+':'+m;
-      const already=appState.transactions.some(function(t){return t.recurrenceKey===key;});
-      if(!already){if(r.type==='income')inc+=Number(r.amount);else exp+=Number(r.amount);}
+      const key='expense:'+r.id+':'+m;
+      const already=appState.transactions.some(function(t){
+        return t.recurrenceKey===key
+          || (t.sourceRecurringId===r.id && String(t.purchaseDate || t.date || '').slice(0,7)===m);
+      });
+      if(!already) exp+=Number(r.amount || 0);
     });
+
+    appState.incomeSources.filter(function(source){return source.active!==false;}).forEach(function(source){
+      const key='income:'+source.id+':'+m;
+      const already=appState.transactions.some(function(t){
+        return t.recurrenceKey===key
+          || (t.sourceRecurringId===source.id && String(t.purchaseDate || t.date || '').slice(0,7)===m);
+      });
+      if(!already) inc+=Number(source.amount || 0);
+    });
+
     appState.bills.filter(function(b){return !b.paid&&b.dueDate.slice(0,7)===m;}).forEach(function(b){if(b.type==='income')inc+=Number(b.amount);else exp+=Number(b.amount);});
     return {m:m,inc:inc,exp:exp,bal:inc-exp};
   });

@@ -1223,8 +1223,39 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   color:var(--card-muted,rgba(255,255,255,.7));
   font-size:8px
 }
-.credit-card.light-card{box-shadow:0 11px 28px rgba(20,31,52,.10)}
+.credit-card.light-card{
+  color:var(--card-fg,#101827);
+  box-shadow:0 11px 28px rgba(20,31,52,.10);
+}
+.credit-card.light-card .credit-top>span,
+.credit-card.light-card .credit-limit span,
+.credit-card.light-card .credit-meta,
+.credit-card.light-card>small{
+  color:var(--card-muted,rgba(16,24,39,.68));
+}
+.credit-card.light-card .row-btn{
+  color:var(--card-fg,#101827);
+}
+.credit-card.light-card .row-btn:hover{
+  color:var(--card-fg,#101827);
+  background:rgba(16,24,39,.08);
+}
+.credit-card.light-card .progress{
+  background:rgba(16,24,39,.12);
+}
 .installment-pill{color:#a99cff}
+
+
+.card-grid{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));
+}
+.goal-grid{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));
+}
+.insight-grid{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));
+}
+.credit-card{width:100%}
 
 /* Bills */
 .bill-grid{display:grid;gap:10px}
@@ -1448,6 +1479,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 /* Settings */
 .settings-layout{display:grid;gap:15px}
 .settings-section{
+  container-type:inline-size;
   display:grid;
   gap:9px;
   padding:14px;
@@ -1470,7 +1502,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   gap:11px;
 }
 .settings-grid-compact{
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));
 }
 .settings-grid-account{grid-template-columns:1fr}
 .settings-danger-section{border-color:rgba(255,95,109,.16);background:linear-gradient(135deg,rgba(255,95,109,.04),transparent 45%),var(--surface-2)}
@@ -1484,7 +1516,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   min-width:0;
   min-height:112px;
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+  grid-template-columns:minmax(0,1fr) minmax(190px,240px);
   align-items:center;
   gap:14px 18px;
   padding:16px;
@@ -1586,6 +1618,56 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .danger-zone{border-color:rgba(255,95,109,.18)}
 
 
+
+
+@container (max-width:760px){
+  .settings-grid,
+  .settings-grid-compact,
+  .settings-danger-section .settings-grid{
+    grid-template-columns:1fr;
+  }
+  .settings-grid-compact .category-settings,
+  .settings-grid-compact .legal-settings{
+    grid-column:1;
+  }
+  .settings-card{
+    grid-template-columns:1fr;
+    align-items:stretch;
+    min-height:0;
+  }
+  .settings-card>select,
+  .settings-card>.btn,
+  .settings-card>.file-btn,
+  .settings-card>.money-input,
+  .settings-card>.settings-control-stack{
+    width:100%;
+    max-width:none;
+  }
+  .settings-section-head{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:4px;
+  }
+  .settings-section-head>p{
+    max-width:none;
+    text-align:left;
+  }
+}
+
+@container (max-width:500px){
+  .settings-section{padding:10px}
+  .settings-card{padding:13px}
+  .cloud-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .cloud-actions .btn{width:100%}
+  .income-settings-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .income-settings-toolbar .btn{width:100%}
+}
 
 /* Recurring income settings */
 .income-settings-section{
@@ -2025,6 +2107,21 @@ body.is-loading{cursor:wait}
 /* Mobile navigation */
 .mobile-nav{display:none}
 
+
+@media(max-width:1100px){
+  .topbar{
+    align-items:flex-start;
+    flex-wrap:wrap;
+    padding-top:10px;
+  }
+  .topbar-left{flex:1 1 240px}
+  .topbar-actions{flex:1 1 100%;justify-content:flex-end}
+  .month-picker-wrap{margin-right:auto}
+  .settings-grid-compact{
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));
+  }
+}
+
 /* 1200px */
 
 .settings-budget-card{align-items:start}
@@ -2317,11 +2414,11 @@ body.is-loading{cursor:wait}
   .credit-fields{grid-template-columns:1fr}
   .credit-fields .span-2{grid-column:1}
   .modal-actions{grid-column:1!important}
-  .calendar-panel{overflow-x:auto}
-  .calendar-weekdays,.calendar-grid{min-width:700px}
-  .calendar-cell{min-height:84px;padding:6px}
-  .calendar-event{height:auto;padding:4px 5px;font-size:7px}
-  .day-total{display:block}
+  .calendar-panel{overflow:hidden}
+  .calendar-weekdays,.calendar-grid{min-width:0}
+  .calendar-cell{min-height:76px;padding:5px}
+  .calendar-event{height:auto;padding:3px 4px;font-size:6.5px}
+  .day-total{display:none}
   .score-wrap{grid-template-columns:1fr;text-align:center}
   .score-ring{margin:auto}
   .health-reasons{text-align:left}
@@ -2335,6 +2432,11 @@ body.is-loading{cursor:wait}
 
 /* 420px */
 @media(max-width:420px){
+  .credit-card{min-height:188px}
+  .credit-card h4{margin:18px 0 14px;font-size:16px}
+  .credit-limit strong{font-size:18px}
+  .credit-meta{flex-direction:column;gap:3px}
+
   .kpi-grid,.family-kpis,.summary-chips,.shopping-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
   .kpi-card{min-height:104px;padding:12px}
   .kpi-card>strong{font-size:17px}

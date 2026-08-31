@@ -22,9 +22,20 @@ service cloud.firestore {
         );
     }
 
+    function familyOwner(familyId) {
+      return signedIn()
+        && familyId is string
+        && familyId.size() > 0
+        && exists(/databases/$(database)/documents/families/$(familyId))
+        && get(/databases/$(database)/documents/families/$(familyId)).data.ownerUid == request.auth.uid;
+    }
+
     function adminOf(familyId) {
-      return memberOf(familyId)
-        && get(memberPath(familyId, request.auth.uid)).data.role == 'admin';
+      return familyOwner(familyId)
+        || (
+          memberOf(familyId)
+          && get(memberPath(familyId, request.auth.uid)).data.role == 'admin'
+        );
     }
 
     function profileOf(userId) {
@@ -90,7 +101,7 @@ service cloud.firestore {
     }
 
     match /families/{familyId} {
-      allow read: if memberOf(familyId);
+      allow read: if memberOf(familyId) || familyOwner(familyId);
 
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid;

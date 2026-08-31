@@ -8,6 +8,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  reauthenticateWithPopup,
+  deleteUser,
   signOut
 } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
 import {
@@ -701,6 +703,82 @@ async function leaveFamily(){
   await setDoc(profileRef(),{familyId:'',role:'',updatedAt:serverTimestamp()},{merge:true});
 }
 
+
+async function deleteCurrentAccount(){
+  requireUser();
+
+  const user=currentUser;
+  const uid=user.uid;
+  const email=normalizeEmail(user.email);
+
+  // Exclusão de conta é uma ação sensível. Reautentica antes de remover dados.
+  const provider=new GoogleAuthProvider();
+  provider.setCustomParameters({prompt:'select_account'});
+  await reauthenticateWithPopup(user,provider);
+
+  const context=await getFamilyContext();
+
+  if(context.family && context.family.ownerUid===uid){
+    const otherLinks=(context.members || []).filter(member=>member.uid!==uid);
+    if(otherLinks.length){
+      const active=otherLinks.filter(member=>(member.status || 'active')==='active').length;
+      const pending=otherLinks.filter(member=>member.status==='pending').length;
+      const declined=otherLinks.filter(member=>member.status==='declined').length;
+      const parts=[];
+      if(active) parts.push(active+' ativo'+(active===1?'':'s'));
+      if(pending) parts.push(pending+' pendente'+(pending===1?'':'s'));
+      if(declined) parts.push(declined+' recusado'+(declined===1?'':'s'));
+      throw new Error('Você é o proprietário da família e ainda existem outros vínculos ('+parts.join(', ')+'). Remova esses vínculos antes de excluir sua conta.');
+    }
+  }
+
+  // Remove solicitações recebidas pelo usuário.
+  const incoming=await getDocs(query(
+    collection(db,'familyRequests'),
+    where('targetUid','==',uid)
+  ));
+  for(const requestDoc of incoming.docs){
+    await deleteDoc(requestDoc.ref);
+  }
+
+  // Se for administrador, remove convites enviados antes de apagar a família.
+  if(context.family && context.family.ownerUid===uid){
+    const outgoing=await getDocs(query(
+      collection(db,'familyRequests'),
+      where('createdBy','==',uid)
+    ));
+    for(const requestDoc of outgoing.docs){
+      await deleteDoc(requestDoc.ref);
+    }
+  }
+
+  if(context.family){
+    await deleteDoc(doc(db,'families',context.family.id,'members',uid));
+    if(context.family.ownerUid===uid){
+      await deleteDoc(doc(db,'families',context.family.id));
+    }
+  }
+
+  const devices=await getDocs(collection(db,'users',uid,'devices'));
+  for(const device of devices.docs){
+    await deleteDoc(device.ref);
+  }
+
+  await deleteDoc(stateRef(uid));
+  await deleteDoc(profileRef(uid));
+
+  if(email){
+    const directoryKey=await emailDirectoryKey(email);
+    await deleteDoc(doc(db,'userDirectory',directoryKey));
+  }
+
+  await deleteUser(user);
+  currentUser=null;
+
+  return {uid,email};
+}
+
+
 async function enableNotifications(){
   requireUser();
   if(!vapidKey) throw new Error('A chave pública VAPID ainda não foi configurada.');
@@ -758,6 +836,7 @@ globalThis.StopGastosCloud={
   getFamilyStates,
   removeFamilyMember,
   leaveFamily,
+  deleteCurrentAccount,
   enableNotifications
 };
 

@@ -2417,13 +2417,21 @@ function openModal(type,data){
     $('#transactionId').value = data ? data.id : '';
     setRadio('txType',data ? data.type : 'expense');
     $('#txDescription').value = data ? data.description : '';
-    $('#txAmount').value = data ? data.amount : '';
+    $('#txAmount').value = data
+      ? Number(data.purchaseTotal || (
+          data.installmentGroup
+            ? transactionInstallmentMembers(data).reduce(function(sum,item){return sum+Number(item.amount || 0);},0)
+            : data.amount
+        ))
+      : '';
     $('#txDate').value = data ? (data.purchaseDate || data.date) : localDateKey(new Date());
     $('#txCategory').value = data ? data.category : 'alimentacao';
     $('#txPayment').value = data ? (data.payment || 'Pix') : 'Pix';
     $('#txAccount').value = data ? (data.accountId || '') : '';
     $('#txCard').value = data ? (data.cardId || '') : '';
-    $('#txInstallments').value = data && data.installmentCount>1 ? 1 : 1;
+    $('#txInstallments').value = data
+      ? String(normalizedInstallmentCount(data.installmentCount || 1))
+      : '1';
     $('#txTags').value = data ? (data.tags || '') : '';
     $('#txNotes').value = data ? (data.notes || '') : '';
     updateInstallmentFields(data);
@@ -2441,6 +2449,9 @@ function openModal(type,data){
     $('#recCategory').value = data ? data.category : 'moradia';
     $('#recPayment').value = data ? (data.payment || 'Débito automático') : 'Débito automático';
     $('#recCard').value = data ? (data.cardId || '') : '';
+    $('#recInstallments').value = data
+      ? String(normalizedInstallmentCount(data.installmentCount || 1))
+      : '1';
     $('#recActive').checked = data ? data.active !== false : true;
     updateRecurringPaymentFields();
   }
@@ -4870,6 +4881,8 @@ function bindV2Events(){
   $('#txCard').addEventListener('change',function(){updateInstallmentFields();});
   $('#recPayment').addEventListener('change',updateRecurringPaymentFields);
   $('#recCard').addEventListener('change',updateRecurringPaymentFields);
+  $('#recAmount').addEventListener('input',updateRecurringPaymentFields);
+  $('#recInstallments').addEventListener('input',updateRecurringPaymentFields);
   $('#printReportBtn').addEventListener('click',function(){window.print();});
 }
 

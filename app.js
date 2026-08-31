@@ -542,35 +542,53 @@ function waitForUiPaint(){
 }
 
 async function commitStateChange(options={}){
-  if(!appState || !cloudUser) return;
+  if(!appState || !cloudUser) return {saved:false};
 
   appState=normalizeState(appState);
 
-  // Atualização otimista: o usuário vê a mudança antes de qualquer rede.
+  // Atualização otimista: o conteúdo já entra na tela antes da rede.
   renderAll();
   if(familyContext) renderFamily();
 
   if(options.closeModal!==false) closeModal();
 
-  // Garante pelo menos um frame com a interface atualizada antes da persistência.
   await waitForUiPaint();
 
-  // Salva localmente e força a tentativa de sincronização imediatamente.
-  await saveVault(true);
+  updateLoading(
+    options.loadingTitle || 'Salvando informações…',
+    navigator.onLine
+      ? 'A alteração já foi aplicada. Sincronizando com o Firebase…'
+      : 'A alteração já foi aplicada e ficará salva neste dispositivo até a internet voltar.'
+  );
+
+  return saveVault(true);
 }
 
 async function saveVault(immediate=false){
-  if(!appState || !cloudUser) return;
+  if(!appState || !cloudUser) return {saved:false};
+
   const clientUpdatedAt=new Date().toISOString();
   localStateUpdatedAt=clientUpdatedAt;
-  const wrapper={app:'stop-gastos',version:APP_VERSION,clientUpdatedAt,state:appState};
+
+  const wrapper={
+    app:'stop-gastos',
+    version:APP_VERSION,
+    clientUpdatedAt,
+    state:appState
+  };
+
   localStorage.setItem(currentStateKey(),JSON.stringify(wrapper));
 
   if(familyContext && familyStates && cloudUser){
     familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt};
   }
 
-  queueCloudPush(clone(appState),immediate);
+  const cloudResult=await queueCloudPush(clone(appState),immediate);
+  return {
+    saved:true,
+    local:true,
+    cloud:cloudResult || null
+  };
 }
 
 async function decryptVault(vault,pin){
@@ -1864,26 +1882,45 @@ async function cloudSignOut(){
 
 function queueCloudPush(state,immediate){
   const cloud=window.StopGastosCloud;
-  if(!state || !cloud || !cloud.ready || !cloud.isSignedIn()) return;
+  if(!state || !cloud || !cloud.ready || !cloud.isSignedIn()){
+    return Promise.resolve({synced:false,localOnly:true});
+  }
 
   clearTimeout(cloudPushTimer);
+
   const run=async function(){
     try{
-      setCloudStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'Sincronizando…':'Offline · alteração salva localmente');
+      setCloudStatus(
+        navigator.onLine?'syncing':'offline',
+        navigator.onLine?'Sincronizando…':'Offline · alteração salva localmente'
+      );
+
       const result=await cloud.pushState(state);
+
       if(result && result.clientUpdatedAt){
         localStateUpdatedAt=result.clientUpdatedAt;
         writeLocalState();
       }
+
       cloudLastSyncedAt=new Date();
       setCloudStatus('synced','Sincronizado agora');
+      return {synced:true,result};
     }catch(err){
-      setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · sincronização pendente');
+      setCloudStatus(
+        navigator.onLine?'error':'offline',
+        navigator.onLine?'Falha ao sincronizar':'Offline · sincronização pendente'
+      );
+      return {synced:false,error:err};
     }
   };
 
-  if(immediate) run();
-  else cloudPushTimer=setTimeout(run,450);
+  if(immediate) return run();
+
+  cloudPushTimer=setTimeout(function(){
+    run().catch(function(){});
+  },450);
+
+  return Promise.resolve({queued:true});
 }
 
 async function forceCloudSync(showToast=true){
@@ -2794,7 +2831,7 @@ async function saveCardForm(e){
   const idx=appState.cards.findIndex(function(c){return c.id===id;});
   if(idx>=0)appState.cards[idx]=Object.assign({},appState.cards[idx],record);else appState.cards.push(record);
   logAudit(idx>=0?'card-update':'card-create',record.name);
-  await saveVault(); closeModal(); renderAll(); toast('Cartão salvo.','success');
+  await commitStateChange(); toast('Cartão salvo.','success');
 
   });
 }
@@ -2834,7 +2871,7 @@ async function saveBillForm(e){
   if(!record.description||!record.dueDate||!(record.amount>0))return toast('Revise descrição, valor e vencimento.','error');
   const idx=appState.bills.findIndex(function(b){return b.id===id;});
   if(idx>=0)appState.bills[idx]=record;else appState.bills.push(record);
-  logAudit(idx>=0?'bill-update':'bill-create',record.description); await saveVault(); closeModal(); renderAll(); toast('Conta prevista salva.','success');
+  logAudit(idx>=0?'bill-update':'bill-create',record.description); await commitStateChange(); toast('Conta prevista salva.','success');
 
   });
 }

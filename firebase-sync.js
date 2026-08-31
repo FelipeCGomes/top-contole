@@ -50,6 +50,7 @@ const STATE_SECTIONS = [
   'categories',
   'transactions',
   'recurring',
+  'incomeSources',
   'shoppingLists',
   'shoppingActiveListId',
   'budgets',

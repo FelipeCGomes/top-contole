@@ -346,7 +346,9 @@ jobs:
             ['settings persistence status renderer exists', /function\s+renderSettingsPersistenceStatus\s*\(/.test(app)],
             ['sidebar JS matches 900px CSS breakpoint', /window\.innerWidth<=900/.test(app)],
             ['tablet dashboard keeps six-column grid', /@media\(max-width:900px\)[\s\S]*?\.dashboard-optimized\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}/.test(css)],
-            ['tablet settings keep two columns', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?repeat\(2,minmax\(0,1fr\)\)/.test(css)],
+            ['settings use adaptive auto-fit grid', /\.settings-grid\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,340px\),1fr\)\)/.test(css)],
+            ['settings cards can wrap their controls', /\.settings-card\{[\s\S]*?flex-wrap:wrap/.test(css)],
+            ['tablet settings remain adaptive', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,320px\),1fr\)\)/.test(css)],
             ['mobile settings collapse to one column', /@media\(max-width:640px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
             ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:700px\}/.test(css)]
           ];

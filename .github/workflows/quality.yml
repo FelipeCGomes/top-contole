@@ -383,6 +383,35 @@ jobs:
           console.log('Income and benefit-card architecture OK');
           NODE
 
+      - name: Validate installment lifecycle
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+
+          const checks = [
+            ['transaction installment input exists', html.includes('id="txInstallments"')],
+            ['recurring installment input exists', html.includes('id="recInstallments"')],
+            ['transaction edit loads current count', /txInstallments[\s\S]{0,220}installmentCount/.test(app)],
+            ['transaction edit rebuilds group', /function\s+replaceTransactionInstallmentPlan\s*\(/.test(app)],
+            ['transaction save uses rebuilt plan', /if\(existing\)[\s\S]{0,1800}replaceTransactionInstallmentPlan/.test(app)],
+            ['recurring stores installment count', /saveRecurringForm[\s\S]{0,2200}installmentCount/.test(app)],
+            ['recurring creates installment amounts', /syncRecurringTransactionForMonth[\s\S]{0,2600}splitInstallmentAmounts/.test(app)],
+            ['recurring shifts future invoice months', /syncRecurringTransactionForMonth[\s\S]{0,3000}shiftMonth\(firstInvoice,index\)/.test(app)],
+            ['generated transaction updates recurring source', /sourceType==='recurringExpense'[\s\S]{0,600}sourceRecurring\.installmentCount/.test(app)],
+            ['installment purchase delete removes full group', /deleteTransaction[\s\S]{0,1500}installmentGroup/.test(app)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Installment lifecycle validation failed:', failed);
+            process.exit(1);
+          }
+
+          console.log('Installment lifecycle OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'

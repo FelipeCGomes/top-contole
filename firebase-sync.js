@@ -85,12 +85,13 @@ async function emailDirectoryKey(email){
 
 async function registerDirectoryEntry(){
   requireUser();
-  const email=normalizeEmail(currentUser.email);
+  const rawEmail=String(currentUser.email || '').trim();
+  const email=normalizeEmail(rawEmail);
   if(!email) return;
   const key=await emailDirectoryKey(email);
   await setDoc(doc(db,'userDirectory',key),{
     uid:currentUser.uid,
-    email,
+    email:rawEmail,
     displayName:currentUser.displayName || '',
     photoURL:currentUser.photoURL || '',
     updatedAt:serverTimestamp()
@@ -298,18 +299,39 @@ async function acceptFamilyInvite(){
 
 async function sendFamilyInviteByEmail(email){
   requireUser();
-  const context=await getFamilyContext();
-  if(!context.family || context.profile?.role!=='admin') throw new Error('Apenas o administrador pode convidar membros.');
+
+  let context;
+  try{
+    context=await getFamilyContext();
+  }catch(error){
+    throw new Error('Não foi possível validar sua permissão de administrador: '+(error.message || error));
+  }
+
+  if(!context.family || context.profile?.role!=='admin'){
+    throw new Error('Apenas o administrador pode convidar membros.');
+  }
 
   const normalized=normalizeEmail(email);
   if(!normalized) throw new Error('Informe o e-mail Google do membro.');
   if(normalized===normalizeEmail(currentUser.email)) throw new Error('Você já é o administrador desta família.');
 
-  const target=await findUserByEmail(normalized);
+  let target;
+  try{
+    target=await findUserByEmail(normalized);
+  }catch(error){
+    throw new Error('Não foi possível localizar a conta pelo e-mail: '+(error.message || error));
+  }
   if(!target?.uid) throw new Error('Essa conta ainda não entrou no Stop Gastos com esse e-mail.');
 
   const memberRef=doc(db,'families',context.family.id,'members',target.uid);
-  const memberSnap=await getDoc(memberRef);
+
+  let memberSnap;
+  try{
+    memberSnap=await getDoc(memberRef);
+  }catch(error){
+    throw new Error('Não foi possível verificar o vínculo familiar: '+(error.message || error));
+  }
+
   if(memberSnap.exists()){
     const status=memberSnap.data().status || 'active';
     if(status==='active') throw new Error('Essa pessoa já é membro ativo da família.');
@@ -319,38 +341,53 @@ async function sendFamilyInviteByEmail(email){
   const requestId=crypto.randomUUID ? crypto.randomUUID() : 'invite-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   const expiresAt=new Date(Date.now()+7*24*60*60*1000);
 
-  await setDoc(memberRef,{
-    uid:target.uid,
-    displayName:target.displayName || '',
-    email:normalized,
-    photoURL:target.photoURL || '',
-    role:'member',
-    status:'pending',
-    invitedBy:currentUser.uid,
-    invitedByName:currentUser.displayName || '',
-    invitedAt:serverTimestamp(),
-    responseAt:null,
-    declinedAt:null,
-    acceptedAt:null,
-    updatedAt:serverTimestamp()
-  },{merge:true});
+  try{
+    await setDoc(memberRef,{
+      uid:target.uid,
+      displayName:target.displayName || '',
+      email:normalized,
+      photoURL:target.photoURL || '',
+      role:'member',
+      status:'pending',
+      invitedBy:currentUser.uid,
+      invitedByName:currentUser.displayName || '',
+      invitedAt:serverTimestamp(),
+      responseAt:null,
+      declinedAt:null,
+      acceptedAt:null,
+      updatedAt:serverTimestamp()
+    },{merge:true});
+  }catch(error){
+    throw new Error('Não foi possível criar o vínculo pendente: '+(error.message || error));
+  }
 
-  await setDoc(doc(db,'familyRequests',requestId),{
-    requestId,
-    familyId:context.family.id,
-    familyName:context.family.name || 'Família',
-    targetUid:target.uid,
-    targetEmail:normalized,
-    targetName:target.displayName || '',
-    targetPhotoURL:target.photoURL || '',
-    createdBy:currentUser.uid,
-    createdByName:currentUser.displayName || '',
-    status:'pending',
-    expiresAt,
-    createdAt:serverTimestamp(),
-    respondedAt:null,
-    updatedAt:serverTimestamp()
-  });
+  try{
+    await setDoc(doc(db,'familyRequests',requestId),{
+      requestId,
+      familyId:context.family.id,
+      familyName:context.family.name || 'Família',
+      targetUid:target.uid,
+      targetEmail:normalized,
+      targetName:target.displayName || '',
+      targetPhotoURL:target.photoURL || '',
+      createdBy:currentUser.uid,
+      createdByName:currentUser.displayName || '',
+      status:'pending',
+      expiresAt,
+      createdAt:serverTimestamp(),
+      respondedAt:null,
+      updatedAt:serverTimestamp()
+    });
+  }catch(error){
+    try{
+      await setDoc(memberRef,{
+        status:'declined',
+        responseAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      },{merge:true});
+    }catch(rollbackError){}
+    throw new Error('Não foi possível registrar a notificação do convite: '+(error.message || error));
+  }
 
   return {requestId,target,status:'pending'};
 }

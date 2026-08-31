@@ -26,10 +26,22 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 ### Conta Google e sincronização
 - Login somente com Google pelo Firebase Authentication
 - Sessão persistente após atualização da página
-- Cache local separado pelo UID Google
-- Cloud Firestore como fonte sincronizada entre computadores
-- Sincronização automática quando a conexão retorna
+- Cloud Firestore como fonte principal dos dados
+- Cache local por UID apenas para uso offline e recuperação
+- Dados pessoais separados por módulos em `users/{uid}/data/*`
+- Sincronização automática somente após alteração, com debounce de 10 segundos
+- Apenas módulos alterados são enviados ao Firestore
+- Nova alteração dentro dos 10 segundos reinicia o contador
+- Reconexão só dispara envio quando existe alteração pendente
+- Botão manual para sincronizar e confirmar diretamente no servidor
 - Indicador Local / Sincronizando / Sincronizado / Offline
+
+### Política de gravação
+- Alterações atualizam a interface e o cache local imediatamente
+- O Firestore recebe a alteração somente depois de 10 segundos sem novas mudanças
+- Se nada mudou, nenhuma escrita é enviada
+- O documento modular reduz escritas desnecessárias e evita concentrar toda a base em um único documento
+- A leitura em tempo real recebe mudanças de outros dispositivos, mas não gera escrita automática
 
 ### Família
 - Um usuário cria a família e assume o papel de **Administrador**
@@ -83,7 +95,9 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 
 - `userDirectory/{emailHash}`: diretório restrito para localizar uma conta por e-mail exato
 - `users/{uid}/profile/main`: perfil e vínculo familiar
-- `users/{uid}/state/main`: estado financeiro individual
+- `users/{uid}/data/_meta`: metadados da base individual
+- `users/{uid}/data/{sectionId}`: módulos financeiros e configurações
+- `users/{uid}/state/main`: documento legado, usado somente como fallback/migração
 - `users/{uid}/devices/{deviceId}`: dispositivos e notificações
 - `families/{familyId}`: família
 - `families/{familyId}/members/{uid}`: vínculo, papel e status

@@ -494,6 +494,9 @@ async function unlockVault(e){
 
 function openApp(){
   if(!cloudUser) return showSignedOutScreen();
+
+  if(appState) appState=normalizeState(appState);
+
   $('#lockScreen').hidden = true;
   $('#appShell').hidden = false;
   populateCategorySelects();
@@ -711,6 +714,11 @@ function navigate(name){
 
 function renderAll(){
   if(!appState) return;
+
+  // Defesa contra dados antigos, incompletos ou sincronizados com campos null.
+  // Toda renderização parte de um estado com coleções válidas.
+  appState=normalizeState(appState);
+
   populateCategorySelects();
   populateFinanceSelects();
   renderDashboard();

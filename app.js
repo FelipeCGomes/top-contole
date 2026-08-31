@@ -288,9 +288,13 @@ async function init(){
   selectedMonth = currentMonthKey();
   calendarMonth = selectedMonth;
   $('#globalMonth').value = selectedMonth;
-  bindEvents();
-  bindV2Events();
+
+  // Autenticação é prioridade: registra o login antes das demais telas.
   bindCloudEvents();
+
+  try{ bindEvents(); }catch(err){ console.error('Stop Gastos bindEvents:',err); }
+  try{ bindV2Events(); }catch(err){ console.error('Stop Gastos bindV2Events:',err); }
+
   setupPwa();
   handleCloudReady();
   showSignedOutScreen();
@@ -1574,13 +1578,19 @@ function esc(value){
 
 
 function bindCloudEvents(){
-  bindFamilyEvents();
-
   const signInButtons=['googleLoginBtn','googleSettingsBtn'];
   signInButtons.forEach(function(id){
     const el=$('#'+id);
-    if(el) el.addEventListener('click',cloudSignIn);
+    if(el){
+      el.addEventListener('click',function(e){
+        e.preventDefault();
+        cloudSignIn();
+      });
+    }
   });
+
+  // Falhas em recursos secundários não podem impedir o login Google.
+  try{ bindFamilyEvents(); }catch(err){ console.error('Stop Gastos bindFamilyEvents:',err); }
 
   const signOutBtn=$('#cloudSignOutBtn');
   if(signOutBtn) signOutBtn.addEventListener('click',cloudSignOut);
@@ -1735,6 +1745,8 @@ async function cloudSignIn(){
     btn.innerHTML='<span class="button-spinner" aria-hidden="true"></span> Abrindo Google…';
   });
 
+  setCloudStatus('syncing','Abrindo autenticação do Google…');
+
   try{
     const cloud=await waitForCloudReady();
 
@@ -1744,13 +1756,16 @@ async function cloudSignIn(){
       return;
     }
 
-    setCloudStatus('syncing','Abrindo login Google…');
     await cloud.signInGoogle();
   }catch(err){
+    console.error('Stop Gastos Google login:',err);
+
     if(err && err.code==='auth/unauthorized-domain'){
-      toast('O domínio do GitHub Pages precisa ser autorizado no Firebase Authentication.','error');
+      toast('O domínio felipecgomes.github.io precisa estar autorizado no Firebase Authentication.','error');
     }else if(err && err.code==='auth/popup-closed-by-user'){
       toast('O login Google foi cancelado.','info');
+    }else if(err && err.code==='auth/popup-blocked'){
+      toast('O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente novamente.','error');
     }else{
       toast('Não foi possível entrar com Google: '+(err.message || 'erro desconhecido'),'error');
     }

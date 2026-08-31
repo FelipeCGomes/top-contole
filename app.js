@@ -667,7 +667,6 @@ async function commitStateChange(options={}){
 
   appState=normalizeState(appState);
 
-  // Atualização otimista: o conteúdo já entra na tela antes da rede.
   renderAll();
   if(familyContext) renderFamily();
 
@@ -678,47 +677,51 @@ async function commitStateChange(options={}){
   updateLoading(
     options.loadingTitle || 'Salvando informações…',
     navigator.onLine
-      ? 'A alteração já foi aplicada. Sincronizando com o Firebase…'
-      : 'A alteração já foi aplicada e ficará salva neste dispositivo até a internet voltar.'
+      ? 'Alteração salva. O Firestore será atualizado após 10 segundos sem novas mudanças.'
+      : 'Alteração salva neste dispositivo. O Firestore será atualizado quando a conexão voltar.'
   );
 
-  const result=await saveVault(true);
-
-  if(result?.cloud && result.cloud.synced===false && result.cloud.error){
-    const error=result.cloud.error;
-    if(error.permissionDenied){
-      toast('Dados salvos neste dispositivo, mas o Firestore recusou a gravação. Publique o firestore.rules atualizado no Firebase.','error');
-    }else if(navigator.onLine){
-      toast('Dados salvos localmente, mas não foi possível enviar ao Firebase: '+(error.message || 'erro de sincronização'),'error');
-    }
-  }
-
-  return result;
+  return saveVault(false);
 }
 
-async function saveVault(immediate=false){
+async function saveVault(force=false){
   if(!appState || !cloudUser) return {saved:false};
 
-  const clientUpdatedAt=new Date().toISOString();
-  localStateUpdatedAt=clientUpdatedAt;
+  appState=normalizeState(appState);
 
-  const wrapper={
-    app:'stop-gastos',
-    version:APP_VERSION,
-    clientUpdatedAt,
-    state:appState
-  };
-
-  localStorage.setItem(currentStateKey(),JSON.stringify(wrapper));
-
-  if(familyContext && familyStates && cloudUser){
-    familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt};
+  const changedSections=changedStateSections(appState);
+  if(!changedSections.length){
+    writeLocalState();
+    return {
+      saved:true,
+      local:true,
+      changed:false,
+      cloud:{queued:false,noChanges:true}
+    };
   }
 
-  const cloudResult=await queueCloudPush(clone(appState),immediate);
+  localStateUpdatedAt=new Date().toISOString();
+  cloudSyncPending=true;
+  cloudSyncDueAt=force ? Date.now() : Date.now()+CLOUD_SYNC_DELAY_MS;
+  writeLocalState();
+
+  if(familyContext && familyStates && cloudUser){
+    familyStates[cloudUser.uid]={
+      state:clone(appState),
+      clientUpdatedAt:localStateUpdatedAt
+    };
+  }
+
+  const cloudResult=await queueCloudPush(clone(appState),{
+    force,
+    sections:changedSections
+  });
+
   return {
     saved:true,
     local:true,
+    changed:true,
+    sections:changedSections,
     cloud:cloudResult || null
   };
 }
@@ -3104,37 +3107,105 @@ async function cloudSignOut(){
   });
 }
 
-function queueCloudPush(state,immediate){
+function queueCloudPush(state,options={}){
+  const force=options===true || options?.force===true;
   const cloud=window.StopGastosCloud;
-  if(!state || !cloud || !cloud.ready || !cloud.isSignedIn()){
-    return Promise.resolve({synced:false,localOnly:true});
+
+  if(cloudPushTimer){
+    clearTimeout(cloudPushTimer);
+    cloudPushTimer=null;
   }
 
-  clearTimeout(cloudPushTimer);
+  const snapshot=clone(state || appState);
+  const sections=Array.isArray(options?.sections) && options.sections.length
+    ? options.sections
+    : changedStateSections(snapshot);
+
+  if(!sections.length){
+    if(cloudSyncedState){
+      cloudSyncPending=false;
+      cloudSyncDueAt=0;
+      writeLocalState();
+    }
+    return Promise.resolve({queued:false,noChanges:true});
+  }
+
+  cloudSyncPending=true;
+
+  if(!cloud || !cloud.ready || !cloud.isSignedIn()){
+    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+    writeLocalState();
+    setCloudStatus('offline','Alterações pendentes · aguardando conexão com Firebase');
+    return Promise.resolve({queued:true,localOnly:true,sections});
+  }
+
+  if(!navigator.onLine && !force){
+    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+    writeLocalState();
+    setCloudStatus('offline','Offline · alterações pendentes para o Firestore');
+    return Promise.resolve({queued:true,offline:true,sections});
+  }
 
   const run=async function(){
+    if(cloudSyncInFlight){
+      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+      writeLocalState();
+      return {queued:true,inFlight:true};
+    }
+
+    const currentSnapshot=clone(appState || snapshot);
+    const currentSections=changedStateSections(currentSnapshot);
+    if(!currentSections.length){
+      cloudSyncPending=false;
+      cloudSyncDueAt=0;
+      writeLocalState();
+      setCloudStatus('synced','Nenhuma alteração pendente');
+      return {synced:true,noChanges:true};
+    }
+
+    cloudSyncInFlight=true;
+    cloudSyncDueAt=0;
+    writeLocalState();
+
     try{
-      setCloudStatus(
-        navigator.onLine?'syncing':'offline',
-        navigator.onLine?'Sincronizando…':'Offline · alteração salva localmente'
-      );
+      setCloudStatus('syncing','Enviando '+currentSections.length+' módulo(s) alterado(s) ao Firestore…');
 
-      const result=await cloud.pushState(state);
+      const result=await cloud.pushState(currentSnapshot,{
+        sections:currentSections
+      });
 
-      if(result && result.clientUpdatedAt){
-        localStateUpdatedAt=result.clientUpdatedAt;
+      cloudSyncedState=clone(currentSnapshot);
+      cloudLastSyncedAt=new Date();
+
+      const remaining=changedStateSections(appState,cloudSyncedState);
+      if(remaining.length){
+        cloudSyncPending=true;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
         writeLocalState();
+        setCloudStatus('syncing','Novas alterações pendentes · sincroniza em 10s');
+
+        cloudPushTimer=setTimeout(function(){
+          queueCloudPush(clone(appState),{force:true,sections:remaining}).catch(function(){});
+        },CLOUD_SYNC_DELAY_MS);
+      }else{
+        cloudSyncPending=false;
+        cloudSyncDueAt=0;
+        localStateUpdatedAt=result?.clientUpdatedAt || localStateUpdatedAt;
+        writeLocalState();
+        setCloudStatus('synced','Firestore atualizado agora');
       }
 
-      cloudLastSyncedAt=new Date();
-      setCloudStatus('synced','Sincronizado agora');
-      return {synced:true,result};
+      return {synced:true,result,sections:currentSections};
     }catch(err){
       const code=String(err?.code || '');
       const message=String(err?.message || err || 'Erro desconhecido');
       const permissionDenied=code.includes('permission-denied')
         || message.toLowerCase().includes('insufficient permissions')
         || message.toLowerCase().includes('missing or insufficient permissions');
+
+      cloudSyncPending=true;
+      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+      writeLocalState();
 
       const statusMessage=!navigator.onLine
         ? 'Offline · sincronização pendente'
@@ -3150,18 +3221,30 @@ function queueCloudPush(state,immediate){
       }));
 
       return {synced:false,error:{code,message,permissionDenied}};
+    }finally{
+      cloudSyncInFlight=false;
     }
   };
 
-  if(immediate) return run();
+  if(force){
+    return run();
+  }
+
+  cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+  writeLocalState();
+  setCloudStatus('syncing','Alterações pendentes · sincronização automática em 10s');
 
   cloudPushTimer=setTimeout(function(){
+    cloudPushTimer=null;
     run().catch(function(){});
-  },450);
+  },CLOUD_SYNC_DELAY_MS);
 
-  return Promise.resolve({queued:true});
+  return Promise.resolve({
+    queued:true,
+    delayMs:CLOUD_SYNC_DELAY_MS,
+    sections
+  });
 }
-
 
 async function testFirestoreFromUi(){
   return withLoading(

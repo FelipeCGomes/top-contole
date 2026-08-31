@@ -533,6 +533,32 @@ async function deriveKey(pin,salt){
   );
 }
 
+function waitForUiPaint(){
+  return new Promise(function(resolve){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
+async function commitStateChange(options={}){
+  if(!appState || !cloudUser) return;
+
+  appState=normalizeState(appState);
+
+  // Atualização otimista: o usuário vê a mudança antes de qualquer rede.
+  renderAll();
+  if(familyContext) renderFamily();
+
+  if(options.closeModal!==false) closeModal();
+
+  // Garante pelo menos um frame com a interface atualizada antes da persistência.
+  await waitForUiPaint();
+
+  // Salva localmente e força a tentativa de sincronização imediatamente.
+  await saveVault(true);
+}
+
 async function saveVault(immediate=false){
   if(!appState || !cloudUser) return;
   const clientUpdatedAt=new Date().toISOString();
@@ -1206,7 +1232,7 @@ async function saveTransactionForm(e){
     const record=Object.assign({},existing,base,{amount:total});
     appState.transactions[appState.transactions.findIndex(function(t){return t.id===id;})]=record;
     logAudit('transaction-update',record.description);
-    await saveVault(); closeModal(); renderAll(); toast('Lançamento atualizado.','success'); return;
+    await commitStateChange(); toast('Lançamento atualizado.','success'); return;
   }
 
   if(type==='expense' && payment==='Cartão de crédito' && requestedInstallments>1 && !cardId){
@@ -1240,7 +1266,7 @@ async function saveTransactionForm(e){
       }));
     }
     logAudit('installment-create',base.description+' · '+count+'x · '+money(total));
-    await saveVault(); closeModal(); renderAll();
+    await commitStateChange();
     toast(count+'x de aproximadamente '+money(total/count)+' criadas. Total: '+money(total)+'.','success');
     return;
   }
@@ -1248,9 +1274,7 @@ async function saveTransactionForm(e){
   const record=Object.assign({},base,{id:uid('tx'),amount:total,createdAt:new Date().toISOString()});
   appState.transactions.push(record);
   logAudit('transaction-create',record.description);
-  await saveVault();
-  closeModal();
-  renderAll();
+  await commitStateChange();
   toast('Lançamento salvo.','success');
 
   });
@@ -1278,9 +1302,7 @@ async function saveRecurringForm(e){
   else appState.recurring.push(record);
   ensureRecurringForMonth(selectedMonth);
   logAudit(index>=0?'recurring-update':'recurring-create',record.description);
-  await saveVault();
-  closeModal();
-  renderAll();
+  await commitStateChange();
   toast(index>=0?'Recorrência atualizada.':'Recorrência criada.','success');
 
   });
@@ -1298,9 +1320,7 @@ async function saveBudgetForm(e){
   const record = {id:id||uid('bud'),category:category,amount:amount,updatedAt:new Date().toISOString()};
   const index = appState.budgets.findIndex(function(b){return b.id===id;});
   if(index>=0) appState.budgets[index] = record; else appState.budgets.push(record);
-  await saveVault();
-  closeModal();
-  renderAll();
+  await commitStateChange();
   toast('Orçamento salvo.','success');
 
   });
@@ -1322,9 +1342,7 @@ async function saveGoalForm(e){
   if(!record.name || !(record.target>0) || record.current<0) return toast('Revise os dados da meta.','error');
   const index = appState.goals.findIndex(function(g){return g.id===id;});
   if(index>=0) appState.goals[index] = record; else appState.goals.push(record);
-  await saveVault();
-  closeModal();
-  renderAll();
+  await commitStateChange();
   toast('Meta salva.','success');
 
   });
@@ -2727,7 +2745,7 @@ async function saveAccountForm(e){
   const idx=appState.accounts.findIndex(function(a){return a.id===id;});
   if(idx>=0)appState.accounts[idx]=Object.assign({},appState.accounts[idx],record);else appState.accounts.push(record);
   logAudit(idx>=0?'account-update':'account-create',record.name);
-  await saveVault(); closeModal(); renderAll(); toast('Conta salva.','success');
+  await commitStateChange(); toast('Conta salva.','success');
 
   });
 }
@@ -2839,7 +2857,7 @@ async function saveTransferForm(e){
   if(!from||!to||from===to)return toast('Escolha contas de origem e destino diferentes.','error');
   if(!(amount>0)||!date)return toast('Informe valor e data.','error');
   const record={id:uid('trf'),fromAccountId:from,toAccountId:to,amount:amount,date:date,notes:$('#transferNotes').value.trim(),createdAt:new Date().toISOString()};
-  appState.transfers.push(record);logAudit('transfer-create',(getAccount(from)?.name||'')+' → '+(getAccount(to)?.name||''));await saveVault();closeModal();renderAll();toast('Transferência registrada sem alterar receitas/despesas.','success');
+  appState.transfers.push(record);logAudit('transfer-create',(getAccount(from)?.name||'')+' → '+(getAccount(to)?.name||''));await commitStateChange();toast('Transferência registrada sem alterar receitas/despesas.','success');
 
   });
 }
@@ -2870,7 +2888,7 @@ async function saveCategoryForm(e){
   const record={id:id||uid('cat'),name:name,icon:$('#categoryIcon').value.trim()||'📦',color:$('#categoryColor').value,group:$('#categoryGroup').value};
   const idx=appState.categories.findIndex(function(c){return c.id===id;});
   if(idx>=0)appState.categories[idx]=Object.assign({},appState.categories[idx],record);else appState.categories.push(record);
-  logAudit(idx>=0?'category-update':'category-create',record.name);await saveVault();closeModal();renderAll();toast('Categoria salva.','success');
+  logAudit(idx>=0?'category-update':'category-create',record.name);await commitStateChange();toast('Categoria salva.','success');
 
   });
 }

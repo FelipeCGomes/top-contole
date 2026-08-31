@@ -161,23 +161,25 @@ async function signInGoogle(){
   if(!auth) throw new Error('Firebase Authentication ainda está inicializando.');
 
   const provider=new GoogleAuthProvider();
-  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    || (window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
 
-  // Em celular, redirect é mais confiável e não depende de popup.
-  if(isMobile){
-    await signInWithRedirect(auth,provider);
-    return null;
-  }
-
+  // Popup funciona melhor no GitHub Pages porque mantém todo o fluxo no
+  // contexto autenticado atual. Redirect fica apenas como fallback.
   try{
     const result=await signInWithPopup(auth,provider);
     return publicUser(result.user);
   }catch(error){
-    if(['auth/popup-blocked','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment'].includes(error.code)){
+    const redirectFallback=[
+      'auth/popup-blocked',
+      'auth/cancelled-popup-request',
+      'auth/operation-not-supported-in-this-environment',
+      'auth/web-storage-unsupported'
+    ];
+
+    if(redirectFallback.includes(error.code)){
       await signInWithRedirect(auth,provider);
       return null;
     }
+
     throw error;
   }
 }

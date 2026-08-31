@@ -399,7 +399,10 @@ jobs:
             ['recurring stores installment count', /saveRecurringForm[\s\S]{0,2200}installmentCount/.test(app)],
             ['recurring creates installment amounts', /syncRecurringTransactionForMonth[\s\S]{0,2600}splitInstallmentAmounts/.test(app)],
             ['recurring shifts future invoice months', /syncRecurringTransactionForMonth[\s\S]{0,3000}shiftMonth\(firstInvoice,index\)/.test(app)],
-            ['generated transaction updates recurring source', /sourceType==='recurringExpense'[\s\S]{0,600}sourceRecurring\.installmentCount/.test(app)],
+            ['generated transaction updates recurring source', /function\s+syncSourceFromTransactionEdit[\s\S]{0,1800}recurring\.installmentCount/.test(app)],
+            ['legacy recurring transactions remain compatible', /function\s+syncSourceFromTransactionEdit[\s\S]{0,700}sourceRecurringId/.test(app)],
+            ['installment origin propagates to rebuilt parcels', /sourceRecurringId:previousRecord\.sourceRecurringId \|\| sourceRecurringId/.test(app)],
+            ['finite recurring plan uses anchor month', /function\s+recurringPlanAnchorMonth\s*\(/.test(app) && /finiteInstallment[\s\S]{0,900}recurringPlanAnchorMonth/.test(app)],
             ['installment purchase delete removes full group', /deleteTransaction[\s\S]{0,1500}installmentGroup/.test(app)]
           ];
 
@@ -456,10 +459,11 @@ jobs:
             ['sidebar JS matches 900px CSS breakpoint', /window\.innerWidth<=900/.test(app)],
             ['tablet dashboard keeps six-column grid', /@media\(max-width:900px\)[\s\S]*?\.dashboard-optimized\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}/.test(css)],
             ['settings use adaptive desktop grid', /\.settings-grid\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,340px\),1fr\)\)/.test(css)],
-            ['settings cards adapt to available width', /\.settings-card\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,260px\),1fr\)\)/.test(css)],
+            ['settings cards use stable control column', /\.settings-card\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) minmax\(190px,240px\)/.test(css)],
+            ['settings use container queries', /@container \(max-width:760px\)/.test(css)],
             ['tablet settings collapse sections to one column', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
             ['mobile settings cards stack internally', /@media\(max-width:640px\)[\s\S]*?\.settings-card\{[\s\S]*?grid-template-columns:1fr/.test(css)],
-            ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:700px\}/.test(css)]
+            ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:0\}/.test(css)]
           ];
 
           const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);

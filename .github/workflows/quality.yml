@@ -149,6 +149,30 @@ jobs:
           console.log('Collection selectors and state shape OK');
           NODE
 
+      - name: Validate recurring card integration
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+
+          const checks = [
+            ['recCard field exists', html.includes('id="recCard"')],
+            ['recCard wrapper exists', html.includes('id="recCardWrap"')],
+            ['payment change is bound', /recPayment[^\n]*addEventListener\('change',updateRecurringPaymentFields\)/.test(js)],
+            ['recurring stores cardId', /cardId[\s\S]{0,120}Cartão de crédito/.test(js) || /Cartão de crédito[\s\S]{0,180}cardId/.test(js)],
+            ['generated recurring transaction has cardId', /function\s+recurringTransactionData[\s\S]*cardId/.test(js)],
+            ['generated recurring transaction has invoiceMonth', /function\s+recurringTransactionData[\s\S]*invoiceMonth/.test(js)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Recurring card integration failed:', failed);
+            process.exit(1);
+          }
+          console.log('Recurring card integration OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'

@@ -10,10 +10,11 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Receitas e despesas por categoria, conta, tags e forma de pagamento
 - Contas e carteiras com saldo individual e consolidado
 - Transferências entre contas
-- Cartões de crédito, limites, fechamento, vencimento e faturas
+- Cartões de crédito, vale-refeição, vale-alimentação, vale-combustível e outros benefícios
 - Compras parceladas com quantidade de parcelas, valor por parcela e projeção futura
 - Contas a pagar e receber
-- Custos fixos, receitas recorrentes e assinaturas
+- Custos fixos e assinaturas somente para despesas recorrentes
+- Rendas recorrentes em Configurações: salário, renda extra, freelance, aluguel recebido, comissão e outras entradas
 - Orçamentos mensais por categoria
 - Categorias personalizadas
 - Metas financeiras
@@ -22,6 +23,14 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Modo privacidade
 - Tema claro/escuro
 - PWA com cache offline
+
+### Rendas recorrentes e benefícios
+- **Custos fixos** aceita somente despesas recorrentes
+- **Configurações > Rendas** centraliza salário, renda extra, freelance, aluguel recebido, comissão e outras entradas mensais
+- Rendas ativas geram automaticamente lançamentos de receita no mês
+- Rendas antigas cadastradas como recorrência são migradas automaticamente para `incomeSources`
+- Vale-refeição, vale-alimentação e vale-combustível ficam em **Cartões**, com saldo/crédito disponível e consumo do mês
+- Benefícios não entram como renda em dinheiro
 
 ### Conta Google e sincronização
 - Login somente com Google pelo Firebase Authentication
@@ -97,6 +106,7 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - `users/{uid}/profile/main`: perfil e vínculo familiar
 - `users/{uid}/data/_meta`: metadados da base individual
 - `users/{uid}/data/{sectionId}`: módulos financeiros e configurações
+- `users/{uid}/data/incomeSources`: fontes de renda recorrente
 - `users/{uid}/state/main`: documento legado, usado somente como fallback/migração
 - `users/{uid}/devices/{deviceId}`: dispositivos e notificações
 - `families/{familyId}`: família
@@ -110,9 +120,10 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 | Lançamentos | `transactions` | `users/{uid}/data/transactions` |
 | Família | família, membros e convites | `families/{familyId}`, `families/{familyId}/members/{uid}`, `familyRequests/{requestId}` |
 | Contas | `accounts` | `users/{uid}/data/accounts` |
-| Cartões | `cards` | `users/{uid}/data/cards` |
+| Cartões e benefícios | `cards` | `users/{uid}/data/cards` |
 | Contas a pagar/receber | `bills` | `users/{uid}/data/bills` |
 | Custos fixos | `recurring` e lançamentos gerados | `users/{uid}/data/recurring` e `users/{uid}/data/transactions` |
+| Rendas recorrentes | `incomeSources` e receitas geradas | `users/{uid}/data/incomeSources` e `users/{uid}/data/transactions` |
 | Lista de compras pessoal | `shoppingLists` | `users/{uid}/data/shoppingLists` |
 | Lista de compras familiar | listas/itens compartilhados | `families/{familyId}/shoppingLists/{listId}` e `.../items/{itemId}` |
 | Orçamentos | `budgets` | `users/{uid}/data/budgets` |

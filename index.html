@@ -619,7 +619,7 @@
                   <span class="settings-icon">☁</span>
                   <div>
                     <h3>Conta Google e sincronização</h3>
-                    <p class="muted">Sua conta Google mantém a sessão e sincroniza seus dados pessoais e familiares pelo Firebase.</p>
+                    <p class="muted">O Firestore é a fonte principal. Alterações são salvas localmente na hora e enviadas ao banco 10 segundos após a última mudança.</p>
                   </div>
                 </div>
                 <div id="cloudAccountBox" class="cloud-account-box">
@@ -638,6 +638,7 @@
                     <span id="cloudSettingsDot" class="sync-dot"></span>
                     <span id="cloudSettingsStatus">Firebase ainda não configurado.</span>
                   </div>
+                  <p class="form-hint">Estrutura principal: <strong>users/{uid}/data/*</strong> · cache local usado somente para offline e recuperação.</p>
                 </div>
               </article>
             </div>

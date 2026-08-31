@@ -660,7 +660,18 @@ async function commitStateChange(options={}){
       : 'A alteração já foi aplicada e ficará salva neste dispositivo até a internet voltar.'
   );
 
-  return saveVault(true);
+  const result=await saveVault(true);
+
+  if(result?.cloud && result.cloud.synced===false && result.cloud.error){
+    const error=result.cloud.error;
+    if(error.permissionDenied){
+      toast('Dados salvos neste dispositivo, mas o Firestore recusou a gravação. Publique o firestore.rules atualizado no Firebase.','error');
+    }else if(navigator.onLine){
+      toast('Dados salvos localmente, mas não foi possível enviar ao Firebase: '+(error.message || 'erro de sincronização'),'error');
+    }
+  }
+
+  return result;
 }
 
 async function saveVault(immediate=false){
@@ -2871,6 +2882,12 @@ function bindCloudEvents(){
   window.addEventListener('stopgastos:cloud-error',function(e){
     setCloudStatus('error',(e.detail && e.detail.message) || 'Falha na sincronização.');
   });
+  window.addEventListener('stopgastos:sync-failed',function(e){
+    const detail=e.detail || {};
+    if(detail.permissionDenied){
+      toast('O Firestore está bloqueando a gravação. Publique as regras atualizadas em Firestore Database → Rules.','error');
+    }
+  });
   window.addEventListener('stopgastos:notification',function(e){
     const payload=e.detail || {};
     const notification=payload.notification || {};
@@ -3088,11 +3105,26 @@ function queueCloudPush(state,immediate){
       setCloudStatus('synced','Sincronizado agora');
       return {synced:true,result};
     }catch(err){
-      setCloudStatus(
-        navigator.onLine?'error':'offline',
-        navigator.onLine?'Falha ao sincronizar':'Offline · sincronização pendente'
-      );
-      return {synced:false,error:err};
+      const code=String(err?.code || '');
+      const message=String(err?.message || err || 'Erro desconhecido');
+      const permissionDenied=code.includes('permission-denied')
+        || message.toLowerCase().includes('insufficient permissions')
+        || message.toLowerCase().includes('missing or insufficient permissions');
+
+      const statusMessage=!navigator.onLine
+        ? 'Offline · sincronização pendente'
+        : permissionDenied
+          ? 'Firestore recusou a gravação · publique as regras atualizadas'
+          : 'Falha no Firebase · '+message.slice(0,120);
+
+      console.error('Stop Gastos Firestore push failed:',err);
+      setCloudStatus(navigator.onLine?'error':'offline',statusMessage);
+
+      globalThis.dispatchEvent(new CustomEvent('stopgastos:sync-failed',{
+        detail:{code,message,permissionDenied}
+      }));
+
+      return {synced:false,error:{code,message,permissionDenied}};
     }
   };
 

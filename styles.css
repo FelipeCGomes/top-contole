@@ -830,6 +830,181 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   background:rgba(123,97,255,.04);
 }
 .shopping-manual-field[hidden]{display:none!important}
+
+.shopping-comparison{
+  display:grid;
+  gap:11px;
+  margin:0 0 13px;
+}
+.shopping-comparison[hidden]{display:none!important}
+.shopping-compare-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  padding:15px 17px;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:linear-gradient(120deg,rgba(123,97,255,.07),rgba(22,199,183,.025)),var(--surface);
+}
+.shopping-compare-head h3{margin:4px 0 4px;font-size:15px}
+.shopping-compare-head p{max-width:760px;margin:0;font-size:9px;line-height:1.5}
+.shopping-compare-kpis{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:9px;
+}
+.shopping-compare-kpi{
+  min-height:112px;
+  padding:14px;
+  display:grid;
+  align-content:center;
+  gap:5px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--surface);
+}
+.shopping-compare-kpi.best{
+  border-color:rgba(22,199,183,.22);
+  background:linear-gradient(135deg,rgba(22,199,183,.07),transparent 68%),var(--surface);
+}
+.shopping-compare-kpi.saving{
+  border-color:rgba(123,97,255,.22);
+  background:linear-gradient(135deg,rgba(123,97,255,.07),transparent 68%),var(--surface);
+}
+.shopping-compare-kpi>span{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.shopping-compare-kpi strong{
+  min-width:0;
+  overflow:hidden;
+  font-size:17px;
+  letter-spacing:-.35px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.shopping-compare-kpi small{color:var(--muted);font-size:7.5px;line-height:1.4}
+.shopping-compare-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);
+  gap:11px;
+}
+.shopping-market-ranking,.shopping-best-buy{min-height:265px}
+.shopping-market-bars{display:grid;gap:13px}
+.shopping-market-bar{display:grid;gap:6px}
+.shopping-market-bar-head,.shopping-market-bar-foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.shopping-market-bar-head>div{min-width:0}
+.shopping-market-bar-head b,.shopping-market-bar-head small{display:block}
+.shopping-market-bar-head b{
+  overflow:hidden;
+  font-size:10px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.shopping-market-bar-head small{margin-top:2px;color:var(--muted);font-size:7px}
+.shopping-market-bar-head strong{font-size:11px;white-space:nowrap}
+.shopping-market-track{
+  height:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:var(--surface-2);
+}
+.shopping-market-track i{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,var(--primary),var(--primary-2));
+}
+.shopping-market-bar.best .shopping-market-track i{
+  background:linear-gradient(90deg,var(--accent),var(--income));
+}
+.shopping-market-bar.best .shopping-market-bar-head b::after{
+  content:"Melhor";
+  margin-left:7px;
+  padding:2px 5px;
+  border-radius:999px;
+  color:var(--accent);
+  background:rgba(22,199,183,.09);
+  font-size:6px;
+  font-weight:900;
+  text-transform:uppercase;
+  vertical-align:1px;
+}
+.shopping-market-bar-foot{color:var(--muted);font-size:7px}
+.shopping-split-insight{
+  padding:11px;
+  border:1px solid rgba(22,199,183,.15);
+  border-radius:11px;
+  color:var(--muted);
+  background:rgba(22,199,183,.045);
+  font-size:9px;
+  line-height:1.55;
+}
+.shopping-split-insight strong{color:var(--text)}
+.shopping-best-items-preview{display:grid;gap:7px;margin-top:10px}
+.shopping-best-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:9px 0;
+  border-bottom:1px solid var(--line);
+}
+.shopping-best-item:last-child{border-bottom:0}
+.shopping-best-item>div{min-width:0}
+.shopping-best-item b,.shopping-best-item small{display:block}
+.shopping-best-item b{
+  overflow:hidden;
+  font-size:9px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.shopping-best-item small{margin-top:2px;color:var(--muted);font-size:7px}
+.shopping-best-item>div:last-child{text-align:right}
+.shopping-best-item strong{font-size:10px;white-space:nowrap}
+.shopping-product-compare{overflow:hidden}
+.shopping-compare-table td:first-child b,
+.shopping-compare-table td:first-child small{display:block}
+.shopping-compare-table td:first-child small{margin-top:2px;color:var(--muted);font-size:7px}
+.shopping-best-market-pill{
+  display:inline-flex;
+  max-width:180px;
+  padding:4px 7px;
+  overflow:hidden;
+  border-radius:999px;
+  color:var(--accent);
+  background:rgba(22,199,183,.08);
+  font-size:8px;
+  font-weight:800;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.shopping-compare-empty{
+  padding:24px 14px;
+  color:var(--muted);
+  text-align:center;
+  font-size:9px;
+  line-height:1.55;
+}
+.privacy-mode #shoppingBestBasket,
+.privacy-mode #shoppingMarketSavings,
+.privacy-mode .shopping-market-bar-head strong,
+.privacy-mode .shopping-split-insight strong,
+.privacy-mode .shopping-best-item strong,
+.privacy-mode .shopping-compare-table .right{
+  filter:blur(7px);
+  user-select:none;
+}
+
 .shopping-toolbar-actions{
   display:flex;
   align-items:center;
@@ -1576,6 +1751,8 @@ body.is-loading{cursor:wait}
   .cloud-status-btn span:last-child{display:none}
   .cloud-status-btn{width:40px;padding:0;justify-content:center}
   .dashboard-grid,.reports-grid{grid-template-columns:1fr}
+  .shopping-compare-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shopping-compare-grid{grid-template-columns:1fr}
   .dashboard-optimized{grid-template-columns:1fr}
   .dash-trend,.dash-budget,.dash-categories,.dash-upcoming,.dash-health,.dash-recent,.dash-forecast{grid-column:1}
   .panel.span-2{grid-column:span 1}
@@ -1670,6 +1847,15 @@ body.is-loading{cursor:wait}
   .donut{width:102px;height:102px}
   .section-toolbar{align-items:stretch;flex-direction:column}
   .shopping-toolbar-actions{width:100%;justify-content:stretch}
+  .shopping-compare-head{align-items:stretch;flex-direction:column;padding:13px}
+  .shopping-compare-head .btn{width:100%}
+  .shopping-compare-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shopping-compare-kpi{min-height:96px;padding:11px}
+  .shopping-compare-kpi strong{font-size:14px}
+  .shopping-market-bar-head{align-items:flex-end}
+  .shopping-market-bar-foot{align-items:flex-start;flex-direction:column;gap:2px}
+  .shopping-product-compare .table-wrap{overflow-x:auto}
+  .shopping-compare-table{min-width:620px}
   .shopping-toolbar-actions select{width:100%;min-width:0}
   .shopping-toolbar-actions .btn{flex:1}
   .shopping-panel-head{align-items:flex-start;flex-direction:column}

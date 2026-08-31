@@ -68,7 +68,32 @@ const pageMeta = {
 };
 
 const $ = function(sel, root){ return (root || document).querySelector(sel); };
-const $$ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
+const $ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
+
+let appBootstrapped=false;
+
+function bootstrapApp(){
+  if(appBootstrapped) return;
+  appBootstrapped=true;
+
+  Promise.resolve(init()).catch(function(error){
+    console.error('Stop Gastos bootstrap:',error);
+    appBootstrapped=false;
+
+    const status=document.querySelector('#cloudLockStatus span:last-child');
+    if(status) status.textContent='Falha ao iniciar o aplicativo. Atualize a página.';
+
+    const login=document.querySelector('#googleLoginBtn');
+    if(login) login.disabled=false;
+  });
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',bootstrapApp,{once:true});
+}else{
+  queueMicrotask(bootstrapApp);
+}
+
 
 let loadingDepth=0;
 
@@ -284,13 +309,16 @@ async function deleteUserAccountFromUi(){
 }
 
 async function init(){
+  // O login é ligado primeiro para continuar utilizável mesmo se algum
+  // recurso secundário falhar durante a inicialização.
+  bindCloudEvents();
+
   defaultsCache = await loadDefaults();
   selectedMonth = currentMonthKey();
   calendarMonth = selectedMonth;
-  $('#globalMonth').value = selectedMonth;
 
-  // Autenticação é prioridade: registra o login antes das demais telas.
-  bindCloudEvents();
+  const monthInput=$('#globalMonth');
+  if(monthInput) monthInput.value = selectedMonth;
 
   try{ bindEvents(); }catch(err){ console.error('Stop Gastos bindEvents:',err); }
   try{ bindV2Events(); }catch(err){ console.error('Stop Gastos bindV2Events:',err); }

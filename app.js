@@ -690,7 +690,10 @@ async function saveVault(force=false){
 
   appState=normalizeState(appState);
 
-  const changedSections=changedStateSections(appState);
+  const changedSections=cloudStorageMode==='modular'
+    ? changedStateSections(appState)
+    : STATE_SECTION_KEYS.slice();
+
   if(!changedSections.length){
     writeLocalState();
     return {
@@ -3394,6 +3397,7 @@ function queueCloudPush(state,options={}){
 
       cloudStorageMode=result?.fallbackLegacy ? 'legacy' : 'modular';
       cloudSyncedState=clone(currentSnapshot);
+      renderSettingsPersistenceStatus();
       cloudLastSyncedAt=new Date();
 
       const remaining=changedStateSections(appState,cloudSyncedState);
@@ -3414,8 +3418,10 @@ function queueCloudPush(state,options={}){
         setCloudStatus(
           'synced',
           result?.fallbackLegacy
-            ? 'Firestore salvo em state/main · publique as regras modulares para migrar data/*'
-            : 'Firestore atualizado agora'
+            ? 'Confirmado no Firestore legado · users/'+cloudUser.uid+'/state/main'
+            : 'Confirmado no Firestore · '+currentSections.map(function(section){
+                return 'data/'+section;
+              }).join(', ')
         );
       }
 

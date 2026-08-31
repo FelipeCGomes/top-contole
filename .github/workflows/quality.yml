@@ -305,6 +305,46 @@ jobs:
           console.log('Firestore persistence architecture OK');
           NODE
 
+      - name: Validate income and benefit architecture
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const sync = fs.readFileSync('firebase-sync.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+          const css = fs.readFileSync('styles.css','utf8');
+
+          const checks = [
+            ['incomeSources initial state', /incomeSources:\[\]/.test(app)],
+            ['incomeSources normalized', /incomeSources:normalizeIncomeSources\(data\)/.test(app)],
+            ['incomeSources Firestore section', /'incomeSources'/.test(sync)],
+            ['income settings UI exists', html.includes('id="incomeSourcesGrid"')],
+            ['income form exists', html.includes('id="incomeSourceForm"')],
+            ['income save handler exists', /async function saveIncomeSourceForm\s*\(/.test(app)],
+            ['fixed cost form has no income radio', !/name="recType"[^>]*value="income"/.test(html)],
+            ['fixed costs force expense type', /async function saveRecurringForm[\s\S]{0,1800}type:'expense'/.test(app)],
+            ['recurring engine generates incomeSources', /appState\.incomeSources[\s\S]{0,900}type:'income'/.test(app)],
+            ['legacy recurring income migrates', /function normalizeIncomeSources[\s\S]*type==='income'/.test(app)],
+            ['benefit card type field exists', html.includes('id="cardType"')],
+            ['meal benefit supported', html.includes('value="meal"') && html.includes('Vale-refeição')],
+            ['food benefit supported', html.includes('value="food"') && html.includes('Vale-alimentação')],
+            ['fuel benefit supported', html.includes('value="fuel"') && html.includes('Vale-combustível')],
+            ['benefit card logic exists', /function isBenefitCard\s*\(/.test(app)],
+            ['benefit payments use cards', /function paymentUsesCard\s*\(/.test(app)],
+            ['income settings responsive grid exists', /\.income-source-grid\{[\s\S]*?auto-fit/.test(css)],
+            ['motion system exists', /@keyframes surfaceEnter/.test(css)],
+            ['reduced motion supported', /@media\(prefers-reduced-motion:reduce\)/.test(css)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Income/benefit architecture failed:', failed);
+            process.exit(1);
+          }
+
+          console.log('Income and benefit architecture OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'
@@ -349,7 +389,7 @@ jobs:
             ['sidebar JS matches 900px CSS breakpoint', /window\.innerWidth<=900/.test(app)],
             ['tablet dashboard keeps six-column grid', /@media\(max-width:900px\)[\s\S]*?\.dashboard-optimized\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}/.test(css)],
             ['settings use adaptive desktop grid', /\.settings-grid\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,340px\),1fr\)\)/.test(css)],
-            ['settings cards use stable internal grid', /\.settings-card\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) minmax\(180px,260px\)/.test(css)],
+            ['settings cards adapt to available width', /\.settings-card\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,260px\),1fr\)\)/.test(css)],
             ['tablet settings collapse sections to one column', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
             ['mobile settings cards stack internally', /@media\(max-width:640px\)[\s\S]*?\.settings-card\{[\s\S]*?grid-template-columns:1fr/.test(css)],
             ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:700px\}/.test(css)]

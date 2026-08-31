@@ -89,6 +89,13 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const js = fs.readFileSync('app.js','utf8');
+          const singleSelectorHelpers = (js.match(/const \\$ = function/g) || []).length;
+          const doubleSelectorHelpers = (js.match(/const \\$\\$ = function/g) || []).length;
+          if (singleSelectorHelpers !== 1 || doubleSelectorHelpers !== 1) {
+            console.error('Selector helpers invalid:', {singleSelectorHelpers, doubleSelectorHelpers});
+            process.exit(1);
+          }
+
           const forbidden = ['escapeHtml'];
           for (const name of forbidden) {
             const refs = (js.match(new RegExp('\\b' + name + '\\b','g')) || []).length;

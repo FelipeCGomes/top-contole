@@ -201,6 +201,42 @@ jobs:
           console.log('Shopping list module OK');
           NODE
 
+      - name: Validate shared family shopping
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const sync = fs.readFileSync('firebase-sync.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+          const rules = fs.readFileSync('firestore.rules','utf8');
+
+          const checks = [
+            ['catalog selector exists', html.includes('id="shoppingItemPreset"')],
+            ['manual item option exists', app.includes("'__manual__'") && html.includes('id="shoppingManualWrap"')],
+            ['catalog includes arroz 5kg', app.includes("'Arroz 5 kg'")],
+            ['catalog includes açúcar 5kg', app.includes("'Açúcar 5 kg'")],
+            ['catalog includes café 500g', app.includes("'Café 500 g'")],
+            ['catalog includes yogurt tray', app.includes("'Bandeja de iogurte 6 unid.'")],
+            ['family shared UI exists', html.includes('id="shoppingSharingBadge"')],
+            ['family shopping list watcher exported', /\bwatchFamilyShoppingLists\s*,/.test(sync)],
+            ['family shopping item watcher exported', /\bwatchFamilyShoppingItems\s*,/.test(sync)],
+            ['family shopping save exported', /\bsaveFamilyShoppingItem\s*,/.test(sync)],
+            ['app switches to family shopping', /function\s+shoppingIsFamilyShared\s*\(/.test(app)],
+            ['family shopping watcher setup exists', /function\s+setupFamilyShoppingWatchers\s*\(/.test(app)],
+            ['rules include shopping lists', /match \/shoppingLists\/\{listId\}/.test(rules)],
+            ['rules include shopping items', /match \/items\/\{itemId\}/.test(rules)],
+            ['active family members can read shopping', /shoppingLists[\s\S]{0,400}allow read: if memberOf\(familyId\)/.test(rules)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Shared family shopping validation failed:', failed);
+            process.exit(1);
+          }
+
+          console.log('Shared family shopping OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'

@@ -154,16 +154,16 @@
           </article>
         </div>
 
-        <div class="dashboard-grid">
-          <article class="panel span-2">
+        <div class="dashboard-grid dashboard-optimized">
+          <article class="panel dash-trend">
             <div class="panel-head">
-              <div><span class="eyebrow">EVOLUÇÃO</span><h3>Gastos nos últimos 6 meses</h3></div>
+              <div><span class="eyebrow">EVOLUÇÃO</span><h3>Receitas e despesas nos últimos 6 meses</h3></div>
               <div class="legend-inline"><span><i class="legend-dot expense-dot"></i>Despesas</span><span><i class="legend-dot income-dot"></i>Receitas</span></div>
             </div>
             <div id="trendChart" class="trend-chart" aria-label="Gráfico de evolução mensal"></div>
           </article>
 
-          <article class="panel">
+          <article class="panel dash-budget">
             <div class="panel-head">
               <div><span class="eyebrow">ORÇAMENTO</span><h3>Limite mensal</h3></div>
               <button class="mini-link" data-nav="budgets">Gerenciar</button>
@@ -178,7 +178,7 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel dash-categories">
             <div class="panel-head">
               <div><span class="eyebrow">CATEGORIAS</span><h3>Para onde foi seu dinheiro</h3></div>
               <button class="mini-link" data-nav="reports">Detalhes</button>
@@ -189,7 +189,7 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel dash-upcoming">
             <div class="panel-head">
               <div><span class="eyebrow">FIXOS</span><h3>Próximos vencimentos</h3></div>
               <button class="mini-link" data-nav="recurring">Ver todos</button>
@@ -197,7 +197,12 @@
             <div id="upcomingList" class="compact-list empty-state">Nenhum custo fixo cadastrado.</div>
           </article>
 
-          <article class="panel span-2">
+          <article class="panel dash-health">
+            <div class="panel-head"><div><span class="eyebrow">SAÚDE FINANCEIRA</span><h3>Seu score</h3></div><span id="healthScoreBadge" class="score-badge">0/100</span></div>
+            <div class="score-wrap"><div id="healthScoreRing" class="score-ring"><strong id="healthScore">0</strong><span>pontos</span></div><div><h4 id="healthLabel">Começando</h4><div id="healthReasons" class="health-reasons"></div></div></div>
+          </article>
+
+          <article class="panel dash-recent">
             <div class="panel-head">
               <div><span class="eyebrow">ÚLTIMOS LANÇAMENTOS</span><h3>Movimentações recentes</h3></div>
               <button class="mini-link" data-nav="transactions">Ver todos</button>
@@ -209,13 +214,8 @@
               </table>
             </div>
           </article>
-        </div>
-        <div class="dashboard-grid finance-lab">
-          <article class="panel">
-            <div class="panel-head"><div><span class="eyebrow">SAÚDE FINANCEIRA</span><h3>Seu score</h3></div><span id="healthScoreBadge" class="score-badge">0/100</span></div>
-            <div class="score-wrap"><div id="healthScoreRing" class="score-ring"><strong id="healthScore">0</strong><span>pontos</span></div><div><h4 id="healthLabel">Começando</h4><div id="healthReasons" class="health-reasons"></div></div></div>
-          </article>
-          <article class="panel span-2">
+
+          <article class="panel dash-forecast">
             <div class="panel-head"><div><span class="eyebrow">FLUXO FUTURO</span><h3>Previsão para os próximos 6 meses</h3></div><span class="soft-badge">receitas − despesas</span></div>
             <div id="cashFlowForecast" class="forecast-chart"></div>
           </article>
@@ -457,78 +457,106 @@
       </section>
 
       <section id="view-settings" class="view">
-        <div class="settings-grid">
-          <article class="panel settings-card cloud-settings">
-            <div class="cloud-account-head">
-              <span class="settings-icon">☁</span>
-              <div>
-                <h3>Conta Google e sincronização</h3>
-                <p class="muted">Sua conta Google mantém a sessão e sincroniza seus dados pessoais e familiares pelo Firebase.</p>
-              </div>
+        <div class="settings-layout">
+          <section class="settings-section settings-account-section">
+            <div class="settings-section-head"><div><span class="eyebrow">CONTA</span><h3>Conta e sincronização</h3></div><p>Gerencie sua sessão, sincronização e notificações.</p></div>
+            <div class="settings-grid settings-grid-account">
+              <article class="panel settings-card cloud-settings">
+                <div class="cloud-account-head">
+                  <span class="settings-icon">☁</span>
+                  <div>
+                    <h3>Conta Google e sincronização</h3>
+                    <p class="muted">Sua conta Google mantém a sessão e sincroniza seus dados pessoais e familiares pelo Firebase.</p>
+                  </div>
+                </div>
+                <div id="cloudAccountBox" class="cloud-account-box">
+                  <div class="cloud-user">
+                    <div id="cloudAvatar" class="cloud-avatar">G</div>
+                    <div><b id="cloudUserName">Não conectado</b><small id="cloudUserEmail">Seus dados estão apenas neste dispositivo.</small></div>
+                  </div>
+                  <div class="cloud-actions">
+                    <button id="googleSettingsBtn" class="btn google" type="button"><span class="google-g">G</span> Entrar com Google</button>
+                    <button id="cloudSyncNowBtn" class="btn soft" type="button">↻ Sincronizar agora</button>
+                    <button id="enableNotificationsBtn" class="btn soft" type="button">🔔 Ativar notificações</button>
+                    <button id="cloudSignOutBtn" class="btn soft" type="button" hidden>Sair da conta</button>
+                  </div>
+                  <div class="cloud-status-line">
+                    <span id="cloudSettingsDot" class="sync-dot"></span>
+                    <span id="cloudSettingsStatus">Firebase ainda não configurado.</span>
+                  </div>
+                </div>
+              </article>
             </div>
-            <div id="cloudAccountBox" class="cloud-account-box">
-              <div class="cloud-user">
-                <div id="cloudAvatar" class="cloud-avatar">G</div>
-                <div><b id="cloudUserName">Não conectado</b><small id="cloudUserEmail">Seus dados estão apenas neste dispositivo.</small></div>
-              </div>
-              <div class="cloud-actions">
-                <button id="googleSettingsBtn" class="btn google" type="button"><span class="google-g">G</span> Entrar com Google</button>
-                <button id="cloudSyncNowBtn" class="btn soft" type="button">↻ Sincronizar agora</button>
-                <button id="enableNotificationsBtn" class="btn soft" type="button">🔔 Ativar notificações</button>
-                <button id="cloudSignOutBtn" class="btn soft" type="button" hidden>Sair da conta</button>
-              </div>
-              <div class="cloud-status-line">
-                <span id="cloudSettingsDot" class="sync-dot"></span>
-                <span id="cloudSettingsStatus">Firebase ainda não configurado.</span>
-              </div>
-            </div>
-          </article>
+          </section>
 
-          <article class="panel settings-card">
-            <div><span class="settings-icon">◐</span><div><h3>Aparência</h3><p class="muted">Escolha o tema do Stop Gastos.</p></div></div>
-            <select id="themeSelect"><option value="system">Seguir sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">◎</span><div><h3>Limite mensal geral</h3><p class="muted">Usado no indicador principal do dashboard.</p></div></div>
-            <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" /></div>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">⬇</span><div><h3>Backup JSON</h3><p class="muted">Baixe uma cópia dos seus dados. O acesso ao aplicativo é protegido pela sua conta Google.</p></div></div>
-            <button id="backupBtn" class="btn soft">Exportar backup</button>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">⬆</span><div><h3>Restaurar backup</h3><p class="muted">Restaure uma cópia JSON criada pelo Stop Gastos.</p></div></div>
-            <label class="btn soft file-btn">Importar JSON<input id="restoreInput" type="file" accept=".json,application/json" /></label>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon">✦</span><div><h3>Dados de demonstração</h3><p class="muted">Carrega exemplos para explorar todas as telas.</p></div></div>
-            <button id="demoBtn" class="btn soft">Carregar demonstração</button>
-          </article>
-          <article class="panel settings-card category-settings">
-            <div><span class="settings-icon">◈</span><div><h3>Categorias personalizadas</h3><p class="muted">Crie categorias, ícones, cores e classifique como essencial, desejo ou futuro.</p></div></div>
-            <button class="btn soft" data-open="category">＋ Nova categoria</button>
-            <div id="categoryManager" class="category-manager"></div>
-          </article>
-          <article class="panel settings-card">
-            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-shield"/></svg></span><div><h3>Conta e segurança</h3><p class="muted">Acesso protegido pela sua conta Google e pelas regras do Firebase.</p></div></div>
-            <button class="btn soft" type="button" data-nav="privacy">Ver privacidade</button>
-          </article>
-          <article class="panel settings-card legal-settings">
-            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-info"/></svg></span><div><h3>Informações e legal</h3><p class="muted">Conheça o aplicativo, os termos de uso e como seus dados são tratados.</p></div></div>
-            <div class="settings-link-grid">
-              <button class="btn soft" type="button" data-nav="about">Sobre</button>
-              <button class="btn soft" type="button" data-nav="terms">Termos de uso</button>
-              <button class="btn soft" type="button" data-nav="privacy">Política de privacidade</button>
+          <section class="settings-section">
+            <div class="settings-section-head"><div><span class="eyebrow">PREFERÊNCIAS</span><h3>Visual e planejamento</h3></div><p>Ajustes que afetam a experiência e o dashboard.</p></div>
+            <div class="settings-grid settings-grid-compact">
+              <article class="panel settings-card">
+                <div><span class="settings-icon">◐</span><div><h3>Aparência</h3><p class="muted">Escolha o tema do Stop Gastos.</p></div></div>
+                <select id="themeSelect"><option value="system">Seguir sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select>
+              </article>
+              <article class="panel settings-card">
+                <div><span class="settings-icon">◎</span><div><h3>Limite mensal geral</h3><p class="muted">Usado no indicador principal do dashboard.</p></div></div>
+                <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" /></div>
+              </article>
+              <article class="panel settings-card category-settings">
+                <div><span class="settings-icon">◈</span><div><h3>Categorias personalizadas</h3><p class="muted">Crie categorias, ícones, cores e classifique como essencial, desejo ou futuro.</p></div></div>
+                <button class="btn soft" data-open="category">＋ Nova categoria</button>
+                <div id="categoryManager" class="category-manager"></div>
+              </article>
             </div>
-          </article>
-          <article class="panel settings-card danger-zone">
-            <div><span class="settings-icon">!</span><div><h3>Apagar dados financeiros</h3><p class="muted">Apaga seus lançamentos e configurações financeiras, mas mantém sua conta Google no Stop Gastos.</p></div></div>
-            <button id="wipeBtn" class="btn danger" type="button">Apagar dados</button>
-          </article>
-          <article class="panel settings-card danger-zone account-delete-zone">
-            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-trash"/></svg></span><div><h3>Excluir minha conta</h3><p class="muted">Remove seus dados do Stop Gastos, vínculos permitidos e a autenticação Firebase desta conta.</p></div></div>
-            <button id="deleteUserAccountBtn" class="btn danger" type="button">Excluir conta</button>
-          </article>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section-head"><div><span class="eyebrow">DADOS</span><h3>Backup e manutenção</h3></div><p>Exporte, restaure ou carregue dados de teste.</p></div>
+            <div class="settings-grid settings-grid-compact">
+              <article class="panel settings-card">
+                <div><span class="settings-icon">⬇</span><div><h3>Backup JSON</h3><p class="muted">Baixe uma cópia dos seus dados.</p></div></div>
+                <button id="backupBtn" class="btn soft">Exportar backup</button>
+              </article>
+              <article class="panel settings-card">
+                <div><span class="settings-icon">⬆</span><div><h3>Restaurar backup</h3><p class="muted">Restaure uma cópia JSON criada pelo Stop Gastos.</p></div></div>
+                <label class="btn soft file-btn">Importar JSON<input id="restoreInput" type="file" accept=".json,application/json" /></label>
+              </article>
+              <article class="panel settings-card">
+                <div><span class="settings-icon">✦</span><div><h3>Dados de demonstração</h3><p class="muted">Carrega exemplos para explorar as telas.</p></div></div>
+                <button id="demoBtn" class="btn soft">Carregar demonstração</button>
+              </article>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section-head"><div><span class="eyebrow">PRIVACIDADE</span><h3>Segurança e informações</h3></div><p>Entenda a proteção da conta e consulte os documentos do aplicativo.</p></div>
+            <div class="settings-grid settings-grid-compact">
+              <article class="panel settings-card">
+                <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-shield"/></svg></span><div><h3>Conta e segurança</h3><p class="muted">Acesso protegido pela sua conta Google e pelas regras do Firebase.</p></div></div>
+                <button class="btn soft" type="button" data-nav="privacy">Ver privacidade</button>
+              </article>
+              <article class="panel settings-card legal-settings">
+                <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-info"/></svg></span><div><h3>Informações e legal</h3><p class="muted">Conheça o aplicativo, os termos de uso e como seus dados são tratados.</p></div></div>
+                <div class="settings-link-grid">
+                  <button class="btn soft" type="button" data-nav="about">Sobre</button>
+                  <button class="btn soft" type="button" data-nav="terms">Termos de uso</button>
+                  <button class="btn soft" type="button" data-nav="privacy">Política de privacidade</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="settings-section settings-danger-section">
+            <div class="settings-section-head"><div><span class="eyebrow">ZONA DE RISCO</span><h3>Exclusões</h3></div><p>Ações permanentes que exigem confirmação.</p></div>
+            <div class="settings-grid settings-grid-compact">
+              <article class="panel settings-card danger-zone">
+                <div><span class="settings-icon">!</span><div><h3>Apagar dados financeiros</h3><p class="muted">Apaga seus lançamentos e configurações financeiras, mas mantém sua conta Google.</p></div></div>
+                <button id="wipeBtn" class="btn danger" type="button">Apagar dados</button>
+              </article>
+              <article class="panel settings-card danger-zone account-delete-zone">
+                <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-trash"/></svg></span><div><h3>Excluir minha conta</h3><p class="muted">Remove seus dados, vínculos permitidos e a autenticação Firebase desta conta.</p></div></div>
+                <button id="deleteUserAccountBtn" class="btn danger" type="button">Excluir conta</button>
+              </article>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -661,6 +689,10 @@
         <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
         <label class="field">Categoria<select id="recCategory" required></select></label>
         <label class="field">Pagamento<select id="recPayment"><option>Débito automático</option><option>Pix</option><option>Cartão de crédito</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
+        <label id="recCardWrap" class="field recurring-card-field" hidden>Cartão vinculado
+          <select id="recCard"><option value="">Selecione um cartão</option></select>
+          <small class="field-help">O custo será lançado automaticamente na fatura deste cartão.</small>
+        </label>
         <label class="check-row span-2"><input id="recActive" type="checkbox" checked /> Ativo e gerar automaticamente</label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar recorrência</button></div>
       </form>

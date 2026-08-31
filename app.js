@@ -1180,18 +1180,18 @@ function renderIncomeSources(){
     '</article>';
   }).join('');
 
-  $('.edit-income-source').forEach(function(btn){
+  $$('.edit-income-source').forEach(function(btn){
     btn.onclick=function(){
       const item=appState.incomeSources.find(function(x){return x.id===btn.dataset.id;});
       if(item) openModal('incomeSource',item);
     };
   });
 
-  $('.delete-income-source').forEach(function(btn){
+  $$('.delete-income-source').forEach(function(btn){
     btn.onclick=function(){deleteIncomeSource(btn.dataset.id);};
   });
 
-  $('.income-source-toggle').forEach(function(input){
+  $$('.income-source-toggle').forEach(function(input){
     input.onchange=async function(){
       const item=appState.incomeSources.find(function(x){return x.id===input.dataset.id;});
       if(!item) return;

@@ -31,6 +31,10 @@ let familyStateUnsubs = [];
 let familyInvitations = [];
 let familyInviteUnsubscribe = null;
 let familyMembersUnsubscribe = null;
+let familyShoppingLists = [];
+let familyShoppingListsUnsubscribe = null;
+let familyShoppingItemsUnsubscribe = null;
+let familyShoppingItemsListId = '';
 let familyLoadError = '';
 let notifiedFamilyInvites = new Set();
 
@@ -48,6 +52,72 @@ const fallbackCategories = [
   {id:'salario',name:'Salário',icon:'💼',color:'#4caf50'},
   {id:'outros',name:'Outros',icon:'📦',color:'#8d99ae'}
 ];
+
+const shoppingCatalogGroups = [
+  {label:'Grãos e básicos',items:[
+    'Arroz 1 kg','Arroz 2 kg','Arroz 5 kg',
+    'Feijão 1 kg','Feijão 2 kg',
+    'Açúcar 1 kg','Açúcar 2 kg','Açúcar 5 kg',
+    'Café 250 g','Café 500 g',
+    'Macarrão 500 g','Macarrão 1 kg',
+    'Farinha de trigo 1 kg','Farinha de trigo 5 kg',
+    'Fubá 500 g','Fubá 1 kg',
+    'Tapioca 500 g','Tapioca 1 kg',
+    'Sal 1 kg'
+  ]},
+  {label:'Óleos e condimentos',items:[
+    'Óleo de soja 900 ml','Óleo de soja 1 L',
+    'Azeite 250 ml','Azeite 500 ml',
+    'Vinagre 750 ml',
+    'Molho de tomate 300 g','Molho de tomate sachê 340 g',
+    'Extrato de tomate 300 g',
+    'Maionese 500 g','Ketchup 400 g','Mostarda 200 g'
+  ]},
+  {label:'Leites e laticínios',items:[
+    'Leite 1 L','Caixa de leite 12 × 1 L',
+    'Bandeja de iogurte 6 unid.','Iogurte 170 g','Iogurte 1 L',
+    'Manteiga 200 g','Manteiga 500 g','Margarina 500 g',
+    'Queijo mussarela 500 g','Queijo mussarela 1 kg',
+    'Requeijão 200 g','Creme de leite 200 g','Leite condensado 395 g'
+  ]},
+  {label:'Carnes e proteínas',items:[
+    'Ovos bandeja 12 unid.','Ovos bandeja 20 unid.','Ovos bandeja 30 unid.',
+    'Frango inteiro 1 kg','Peito de frango 1 kg','Coxa/sobrecoxa 1 kg',
+    'Carne bovina 1 kg','Carne moída 1 kg','Carne suína 1 kg',
+    'Linguiça 1 kg','Salsicha 500 g',
+    'Atum lata 170 g','Sardinha lata 125 g'
+  ]},
+  {label:'Hortifruti',items:[
+    'Banana 1 kg','Maçã 1 kg','Laranja 1 kg','Mamão 1 unid.','Melancia 1 unid.',
+    'Batata 1 kg','Cebola 1 kg','Tomate 1 kg','Cenoura 1 kg','Alho 200 g',
+    'Alface 1 unid.','Cheiro-verde 1 maço'
+  ]},
+  {label:'Padaria e mercearia',items:[
+    'Pão de forma 500 g','Pão francês 1 kg',
+    'Biscoito 350 g','Bolacha água e sal 350 g',
+    'Aveia 500 g','Cereal 300 g','Achocolatado 400 g',
+    'Milho verde lata 170 g','Ervilha lata 170 g'
+  ]},
+  {label:'Bebidas',items:[
+    'Água mineral 1,5 L','Água mineral 5 L',
+    'Refrigerante 2 L','Suco 1 L','Água de coco 1 L'
+  ]},
+  {label:'Limpeza',items:[
+    'Detergente 500 ml','Sabão em pó 800 g','Sabão em pó 1,6 kg',
+    'Sabão líquido 3 L','Amaciante 2 L',
+    'Água sanitária 1 L','Água sanitária 2 L',
+    'Desinfetante 2 L','Limpador multiuso 500 ml',
+    'Esponja pacote 3 unid.','Saco de lixo 30 L · 20 unid.',
+    'Saco de lixo 50 L · 20 unid.','Papel-toalha 2 rolos'
+  ]},
+  {label:'Higiene pessoal',items:[
+    'Papel higiênico 4 rolos','Papel higiênico 12 rolos',
+    'Sabonete 90 g','Shampoo 350 ml','Condicionador 350 ml',
+    'Creme dental 90 g','Desodorante aerosol 150 ml',
+    'Absorvente pacote 8 unid.','Fralda pacote'
+  ]}
+];
+
 
 const pageMeta = {
   dashboard:['Dashboard','Visão geral das suas finanças'],

@@ -111,6 +111,44 @@ jobs:
           console.log('UI helper consistency OK');
           NODE
 
+      - name: Validate collection selectors and state shape
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+
+          const unsafeSelectors = [...js.matchAll(/(?<!\$)\$\(([^)]*)\)\.(forEach|map|filter|reduce|some|every|find)\b/g)]
+            .map(m => m[0]);
+          if (unsafeSelectors.length) {
+            console.error('Single-element selector used as collection:', unsafeSelectors);
+            process.exit(1);
+          }
+
+          const collectionFields = [...new Set(
+            [...js.matchAll(/\bappState\.([A-Za-z_$][\w$]*)\.(?:forEach|map|filter|reduce|slice|find|findIndex|some|every|push|unshift|length)\b/g)]
+              .map(m => m[1])
+          )];
+
+          const initStart = js.indexOf('function makeInitialState');
+          const normStart = js.indexOf('function normalizeState');
+          const bindStart = js.indexOf('function bindEvents');
+          const initBlock = js.slice(initStart,normStart);
+          const normalizeBlock = js.slice(normStart,bindStart);
+
+          const initKeys = [...initBlock.matchAll(/^\s{4}([A-Za-z_$][\w$]*):/gm)].map(m=>m[1]);
+          const normalizeKeys = [...normalizeBlock.matchAll(/^\s{4}([A-Za-z_$][\w$]*):/gm)].map(m=>m[1]);
+
+          const missingInitial = collectionFields.filter(k => !initKeys.includes(k));
+          const missingNormalize = collectionFields.filter(k => !normalizeKeys.includes(k));
+
+          if (missingInitial.length || missingNormalize.length) {
+            console.error('State shape mismatch:', {missingInitial, missingNormalize});
+            process.exit(1);
+          }
+
+          console.log('Collection selectors and state shape OK');
+          NODE
+
       - name: Validate CSS structure
         run: |
           node - <<'NODE'

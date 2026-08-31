@@ -2953,11 +2953,30 @@ function editBudget(id){ const item=appState.budgets.find(function(x){return x.i
 function editGoal(id){ const item=appState.goals.find(function(x){return x.id===id;}); if(item) openModal('goal',item); }
 
 async function deleteTransaction(id){
-  const item = appState.transactions.find(function(x){return x.id===id;});
+  const item=appState.transactions.find(function(x){return x.id===id;});
   if(!item) return;
-  if(!await confirmDialog('Excluir lançamento?','"' + item.description + '" será removido permanentemente.')) return;
-  appState.transactions = appState.transactions.filter(function(x){return x.id!==id;});
-  await saveVault(); renderAll(); toast('Lançamento excluído.','success');
+
+  const group=item.installmentGroup
+    ? appState.transactions.filter(function(x){return x.installmentGroup===item.installmentGroup;})
+    : [];
+
+  const grouped=group.length>1;
+  const message=grouped
+    ? '"'+item.description+'" possui '+group.length+' parcelas. Todas as parcelas desta compra serão removidas.'
+    : '"'+item.description+'" será removido permanentemente.';
+
+  if(!await confirmDialog(grouped?'Excluir compra parcelada?':'Excluir lançamento?',message)) return;
+
+  if(grouped){
+    const ids=new Set(group.map(function(x){return x.id;}));
+    appState.transactions=appState.transactions.filter(function(x){return !ids.has(x.id);});
+  }else{
+    appState.transactions=appState.transactions.filter(function(x){return x.id!==id;});
+  }
+
+  await saveVault(false);
+  renderAll();
+  toast(grouped?'Compra parcelada excluída.':'Lançamento excluído.','success');
 }
 async function deleteRecurring(id){
   const item = appState.recurring.find(function(x){return x.id===id;});

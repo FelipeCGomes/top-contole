@@ -6,8 +6,26 @@ const SESSION_KEY_STORAGE = 'stop_gastos_session_key_v1';
 const SESSION_EXPIRY_STORAGE = 'stop_gastos_session_expiry_v1';
 const REFRESH_KEY_STORAGE = 'stop_gastos_refresh_key_v1';
 const REFRESH_EXPIRY_STORAGE = 'stop_gastos_refresh_expiry_v1';
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 const KDF_ITERATIONS = 180000;
+
+const CLOUD_SYNC_DELAY_MS = 10000;
+const STATE_SECTION_KEYS = [
+  'categories',
+  'transactions',
+  'recurring',
+  'shoppingLists',
+  'shoppingActiveListId',
+  'budgets',
+  'goals',
+  'accounts',
+  'cards',
+  'bills',
+  'transfers',
+  'audit',
+  'settings'
+];
+
 
 let appState = null;
 let sessionKey = null;
@@ -24,6 +42,10 @@ let cloudAuthUnsubscribe = null;
 let cloudPushTimer = null;
 let cloudApplying = false;
 let cloudLastSyncedAt = null;
+let cloudSyncedState = null;
+let cloudSyncPending = false;
+let cloudSyncDueAt = 0;
+let cloudSyncInFlight = false;
 let localStateUpdatedAt = '';
 let familyContext = null;
 let familyStates = {};

@@ -514,11 +514,8 @@ function bindEvents(){
   $('#goalForm').addEventListener('submit', saveGoalForm);
   $('#shoppingListForm').addEventListener('submit', saveShoppingListForm);
   $('#shoppingItemForm').addEventListener('submit', addShoppingItem);
-  $('#shoppingListSelect').addEventListener('change', async function(e){
-    appState.shoppingActiveListId=e.target.value || '';
-    renderShoppingLists();
-    await saveVault();
-  });
+  $('#shoppingItemPreset').addEventListener('change', updateShoppingProductFields);
+  $('#shoppingListSelect').addEventListener('change', changeShoppingListSelection);
   $('#deleteShoppingListBtn').addEventListener('click', deleteActiveShoppingList);
   $('#shoppingGridBody').addEventListener('input', handleShoppingGridInput);
   $('#shoppingGridBody').addEventListener('click', handleShoppingGridClick);
@@ -1087,17 +1084,140 @@ function renderRecurring(){
 }
 
 
-let shoppingAutosaveTimer=null;
+
+const shoppingAutosaveTimers=new Map();
+
+function shoppingIsFamilyShared(){
+  return !!(familyContext?.family?.id);
+}
+
+function shoppingListsSource(){
+  return shoppingIsFamilyShared()
+    ? familyShoppingLists
+    : (appState?.shoppingLists || []);
+}
+
+function populateShoppingProductCatalog(){
+  const select=$('#shoppingItemPreset');
+  if(!select || select.dataset.ready==='1') return;
+
+  let html='<option value="">Selecione um produto</option>';
+  shoppingCatalogGroups.forEach(function(group){
+    html+='<optgroup label="'+esc(group.label)+'">';
+    group.items.forEach(function(item){
+      html+='<option value="'+esc(item)+'">'+esc(item)+'</option>';
+    });
+    html+='</optgroup>';
+  });
+  html+='<option value="__manual__">Outro / inserir manualmente</option>';
+
+  select.innerHTML=html;
+  select.dataset.ready='1';
+}
+
+function updateShoppingProductFields(){
+  const preset=$('#shoppingItemPreset');
+  const wrap=$('#shoppingManualWrap');
+  const manual=$('#shoppingItemProduct');
+  if(!preset || !wrap || !manual) return;
+
+  const isManual=preset.value==='__manual__';
+  wrap.hidden=!isManual;
+
+  if(!isManual){
+    manual.value='';
+  }else{
+    setTimeout(function(){manual.focus();},20);
+  }
+}
+
+function clearFamilyShoppingWatchers(){
+  if(familyShoppingListsUnsubscribe){
+    try{familyShoppingListsUnsubscribe();}catch(err){}
+    familyShoppingListsUnsubscribe=null;
+  }
+  if(familyShoppingItemsUnsubscribe){
+    try{familyShoppingItemsUnsubscribe();}catch(err){}
+    familyShoppingItemsUnsubscribe=null;
+  }
+  familyShoppingItemsListId='';
+  familyShoppingLists=[];
+}
+
+function setupFamilyShoppingWatchers(cloud){
+  if(!cloud || !cloudUser || !familyContext?.family?.id){
+    clearFamilyShoppingWatchers();
+    renderShoppingLists();
+    return;
+  }
+
+  const familyId=familyContext.family.id;
+
+  familyShoppingListsUnsubscribe=cloud.watchFamilyShoppingLists(familyId,function(lists){
+    const previous=new Map(familyShoppingLists.map(function(list){
+      return [list.id,list];
+    }));
+
+    familyShoppingLists=(lists || []).map(function(list){
+      const old=previous.get(list.id);
+      return Object.assign({},list,{
+        items:old && Array.isArray(old.items) ? old.items : []
+      });
+    });
+
+    const activeId=appState?.shoppingActiveListId || '';
+    if(!familyShoppingLists.some(function(list){return list.id===activeId;})){
+      if(appState) appState.shoppingActiveListId=familyShoppingLists[0]?.id || '';
+    }
+
+    setupFamilyShoppingItemsWatcher(cloud);
+    renderShoppingLists();
+  });
+}
+
+function setupFamilyShoppingItemsWatcher(cloud){
+  if(!cloud || !familyContext?.family?.id) return;
+
+  const list=getActiveShoppingList();
+  const nextId=list?.id || '';
+
+  if(nextId===familyShoppingItemsListId && familyShoppingItemsUnsubscribe) return;
+
+  if(familyShoppingItemsUnsubscribe){
+    try{familyShoppingItemsUnsubscribe();}catch(err){}
+    familyShoppingItemsUnsubscribe=null;
+  }
+
+  familyShoppingItemsListId=nextId;
+  if(!nextId) return;
+
+  familyShoppingItemsUnsubscribe=cloud.watchFamilyShoppingItems(
+    familyContext.family.id,
+    nextId,
+    function(items){
+      const target=familyShoppingLists.find(function(list){return list.id===nextId;});
+      if(target){
+        target.items=(items || []).map(function(item,index){
+          return Object.assign({order:index+1},item);
+        });
+      }
+      renderShoppingLists();
+    }
+  );
+}
 
 function getActiveShoppingList(){
-  if(!appState || !Array.isArray(appState.shoppingLists) || !appState.shoppingLists.length) return null;
+  if(!appState) return null;
 
-  let list=appState.shoppingLists.find(function(x){
+  const lists=shoppingListsSource();
+  if(!lists.length) return null;
+
+  let list=lists.find(function(x){
     return x.id===appState.shoppingActiveListId;
   });
 
   if(!list){
-    list=appState.shoppingLists[0];
+    list=lists[0];
     appState.shoppingActiveListId=list.id;
   }
 
@@ -1153,15 +1273,28 @@ function renderShoppingSummary(list){
 
 function shoppingListDateLabel(value){
   if(!value) return '';
+
+  if(typeof value==='object' && value.seconds){
+    return new Date(value.seconds*1000).toLocaleDateString('pt-BR',{
+      day:'2-digit',month:'2-digit',year:'numeric'
+    });
+  }
+
   const date=new Date(value);
   if(!Number.isFinite(date.getTime())) return '';
-  return date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  return date.toLocaleDateString('pt-BR',{
+    day:'2-digit',month:'2-digit',year:'numeric'
+  });
 }
 
 function renderShoppingLists(){
   if(!appState || !$('#shoppingListSelect')) return;
 
-  const lists=appState.shoppingLists || [];
+  populateShoppingProductCatalog();
+  updateShoppingProductFields();
+
+  const shared=shoppingIsFamilyShared();
+  const lists=shoppingListsSource();
   const select=$('#shoppingListSelect');
   const deleteBtn=$('#deleteShoppingListBtn');
   const addForm=$('#shoppingItemForm');
@@ -1169,9 +1302,21 @@ function renderShoppingLists(){
   const gridWrap=$('#shoppingGridWrap');
   const emptyItems=$('#shoppingItemsEmpty');
   const body=$('#shoppingGridBody');
+  const badge=$('#shoppingSharingBadge');
+  const sharingText=$('#shoppingSharingText');
+
+  if(badge){
+    badge.textContent=shared?'Compartilhada com a família':'Pessoal';
+    badge.classList.toggle('family-shared',shared);
+  }
+  if(sharingText){
+    sharingText.textContent=shared
+      ? 'Todos os membros ativos de '+(familyContext?.family?.name || 'sua família')+' podem incluir produtos e atualizar preços em tempo real.'
+      : 'Planeje quantidades antes de sair e informe os preços no mercado para acompanhar o total em tempo real.';
+  }
 
   if(!lists.length){
-    appState.shoppingActiveListId='';
+    if(!shared) appState.shoppingActiveListId='';
     select.innerHTML='<option value="">Nenhuma lista</option>';
     select.disabled=true;
     deleteBtn.hidden=true;
@@ -1179,8 +1324,10 @@ function renderShoppingLists(){
     noList.hidden=false;
     gridWrap.hidden=true;
     $('#shoppingListTitle').textContent='Nenhuma lista selecionada';
-    $('#shoppingListMeta').textContent='Crie uma lista para começar.';
-    $('#shoppingAutosaveStatus').textContent='Salvamento automático';
+    $('#shoppingListMeta').textContent=shared
+      ? 'Crie uma lista compartilhada para a família começar.'
+      : 'Crie uma lista para começar.';
+    $('#shoppingAutosaveStatus').textContent=shared?'Sincronização em tempo real':'Salvamento automático';
     renderShoppingSummary(null);
     body.innerHTML='';
     return;
@@ -1194,16 +1341,27 @@ function renderShoppingLists(){
   }).join('');
   select.value=active.id;
 
-  deleteBtn.hidden=false;
+  const canDelete=!shared
+    || familyContext?.profile?.role==='admin'
+    || active.createdBy===cloudUser?.uid;
+
+  deleteBtn.hidden=!canDelete;
   addForm.hidden=false;
   noList.hidden=true;
   gridWrap.hidden=false;
 
   $('#shoppingListTitle').textContent=active.name || 'Lista de compras';
+
   const meta=[];
   if(active.store) meta.push(active.store);
+  if(active.createdByName && shared) meta.push('Criada por '+active.createdByName);
   if(active.createdAt) meta.push('Criada em '+shoppingListDateLabel(active.createdAt));
-  $('#shoppingListMeta').textContent=meta.join(' · ') || 'Preencha os preços conforme compra os produtos.';
+  $('#shoppingListMeta').textContent=meta.join(' · ')
+    || (shared?'Lista compartilhada com os membros ativos.':'Preencha os preços conforme compra os produtos.');
+
+  $('#shoppingAutosaveStatus').textContent=shared
+    ? 'Sincronização em tempo real'
+    : 'Salvamento automático';
 
   const items=active.items || [];
   emptyItems.hidden=items.length!==0;
@@ -1227,6 +1385,19 @@ function renderShoppingLists(){
   renderShoppingSummary(active);
 }
 
+async function changeShoppingListSelection(e){
+  if(!appState) return;
+
+  appState.shoppingActiveListId=e.target.value || '';
+
+  if(shoppingIsFamilyShared()){
+    setupFamilyShoppingItemsWatcher(window.StopGastosCloud);
+  }
+
+  renderShoppingLists();
+  await saveVault();
+}
+
 async function saveShoppingListForm(e){
   return withLoading('Criando lista…','Preparando sua nova lista de compras.',async function(){
     e.preventDefault();
@@ -1239,29 +1410,61 @@ async function saveShoppingListForm(e){
       return;
     }
 
-    const now=new Date().toISOString();
-    const list={
-      id:uid('shop'),
-      name,
-      store,
-      items:[],
-      createdAt:now,
-      updatedAt:now
-    };
+    if(shoppingIsFamilyShared()){
+      const cloud=window.StopGastosCloud;
+      const created=await cloud.createFamilyShoppingList(name,store);
 
-    appState.shoppingLists.unshift(list);
-    appState.shoppingActiveListId=list.id;
-    logAudit('shopping-list-create',name);
+      familyShoppingLists.unshift(created);
+      appState.shoppingActiveListId=created.id;
 
-    await commitStateChange();
-    toast('Lista de compras criada.','success');
-    navigate('shopping');
+      closeModal();
+      renderShoppingLists();
+      setupFamilyShoppingItemsWatcher(cloud);
+      await saveVault();
+
+      toast('Lista criada e compartilhada com a família.','success');
+      navigate('shopping');
+    }else{
+      const now=new Date().toISOString();
+      const list={
+        id:uid('shop'),
+        name,
+        store,
+        items:[],
+        createdAt:now,
+        updatedAt:now
+      };
+
+      appState.shoppingLists.unshift(list);
+      appState.shoppingActiveListId=list.id;
+      logAudit('shopping-list-create',name);
+
+      await commitStateChange();
+      toast('Lista de compras criada.','success');
+      navigate('shopping');
+    }
 
     setTimeout(function(){
-      const field=$('#shoppingItemProduct');
+      const field=$('#shoppingItemPreset');
       if(field) field.focus();
     },80);
   });
+}
+
+function resetShoppingItemForm(){
+  $('#shoppingItemPreset').value='';
+  $('#shoppingItemProduct').value='';
+  $('#shoppingItemQty').value='1';
+  $('#shoppingItemUnit').value='';
+  updateShoppingProductFields();
+}
+
+function selectedShoppingProduct(){
+  const preset=$('#shoppingItemPreset').value;
+  if(preset==='__manual__'){
+    return $('#shoppingItemProduct').value.trim();
+  }
+  return preset.trim();
 }
 
 async function addShoppingItem(e){
@@ -1273,13 +1476,13 @@ async function addShoppingItem(e){
     return;
   }
 
-  const product=$('#shoppingItemProduct').value.trim();
+  const product=selectedShoppingProduct();
   const qty=Math.max(0,Number($('#shoppingItemQty').value || 0));
   const unitPrice=Math.max(0,Number($('#shoppingItemUnit').value || 0));
 
   if(!product){
-    toast('Informe o produto.','error');
-    $('#shoppingItemProduct').focus();
+    toast('Selecione um produto ou escolha "Outro / inserir manualmente".','error');
+    $('#shoppingItemPreset').focus();
     return;
   }
   if(!(qty>0)){
@@ -1287,34 +1490,101 @@ async function addShoppingItem(e){
     return;
   }
 
-  list.items.push({
+  const now=new Date().toISOString();
+  const item={
     id:uid('shopitem'),
     product,
     qty,
     unitPrice,
-    createdAt:new Date().toISOString(),
-    updatedAt:new Date().toISOString()
-  });
-  list.updatedAt=new Date().toISOString();
+    order:(list.items?.length || 0)+1,
+    createdBy:cloudUser?.uid || '',
+    createdByName:cloudUser?.displayName || cloudUser?.email || '',
+    createdAt:now,
+    updatedAt:now
+  };
 
-  $('#shoppingItemProduct').value='';
-  $('#shoppingItemQty').value='1';
-  $('#shoppingItemUnit').value='';
+  list.items.push(item);
+  list.updatedAt=now;
 
+  resetShoppingItemForm();
   renderShoppingLists();
-  scheduleShoppingAutosave();
-  $('#shoppingItemProduct').focus();
+
+  if(shoppingIsFamilyShared()){
+    const status=$('#shoppingAutosaveStatus');
+    if(status){
+      status.textContent='Salvando para a família…';
+      status.classList.add('saving');
+    }
+
+    try{
+      await window.StopGastosCloud.saveFamilyShoppingItem(
+        familyContext.family.id,
+        list.id,
+        item
+      );
+      if(status){
+        status.textContent='Sincronizado com a família';
+        status.classList.remove('saving');
+      }
+    }catch(err){
+      toast(err.message || 'Não foi possível compartilhar este item.','error');
+      if(status){
+        status.textContent='Falha ao sincronizar';
+        status.classList.remove('saving');
+      }
+    }
+  }else{
+    scheduleShoppingAutosave(item);
+  }
+
+  $('#shoppingItemPreset').focus();
 }
 
-function scheduleShoppingAutosave(){
+function scheduleShoppingAutosave(item){
   const status=$('#shoppingAutosaveStatus');
+  const shared=shoppingIsFamilyShared();
+  const key=item?.id || 'personal';
+
   if(status){
     status.textContent='Salvando…';
     status.classList.add('saving');
   }
 
-  // Grava no armazenamento local imediatamente a cada alteração.
-  // O próprio saveVault agrupa o envio ao Firebase para evitar excesso de rede.
+  if(shoppingAutosaveTimers.has(key)){
+    clearTimeout(shoppingAutosaveTimers.get(key));
+  }
+
+  if(shared && item){
+    const timer=setTimeout(async function(){
+      try{
+        const list=getActiveShoppingList();
+        if(!list || !familyContext?.family?.id) return;
+
+        await window.StopGastosCloud.saveFamilyShoppingItem(
+          familyContext.family.id,
+          list.id,
+          clone(item)
+        );
+
+        if(status){
+          status.textContent='Sincronizado com a família';
+          status.classList.remove('saving');
+        }
+      }catch(err){
+        if(status){
+          status.textContent='Falha ao sincronizar';
+          status.classList.remove('saving');
+        }
+        toast(err.message || 'Não foi possível sincronizar a alteração.','error');
+      }finally{
+        shoppingAutosaveTimers.delete(key);
+      }
+    },380);
+
+    shoppingAutosaveTimers.set(key,timer);
+    return;
+  }
+
   saveVault().catch(function(){
     if(status){
       status.textContent='Salvo neste dispositivo';
@@ -1322,13 +1592,15 @@ function scheduleShoppingAutosave(){
     }
   });
 
-  clearTimeout(shoppingAutosaveTimer);
-  shoppingAutosaveTimer=setTimeout(function(){
+  const timer=setTimeout(function(){
     if(status){
       status.textContent='Salvo automaticamente';
       status.classList.remove('saving');
     }
+    shoppingAutosaveTimers.delete(key);
   },420);
+
+  shoppingAutosaveTimers.set(key,timer);
 }
 
 function handleShoppingGridInput(e){
@@ -1364,10 +1636,10 @@ function handleShoppingGridInput(e){
   }
 
   renderShoppingSummary(list);
-  scheduleShoppingAutosave();
+  scheduleShoppingAutosave(item);
 }
 
-function handleShoppingGridClick(e){
+async function handleShoppingGridClick(e){
   const button=e.target.closest('[data-shopping-delete]');
   if(!button) return;
 
@@ -1380,7 +1652,21 @@ function handleShoppingGridClick(e){
   list.updatedAt=new Date().toISOString();
 
   renderShoppingLists();
-  scheduleShoppingAutosave();
+
+  if(shoppingIsFamilyShared()){
+    try{
+      await window.StopGastosCloud.deleteFamilyShoppingItem(
+        familyContext.family.id,
+        list.id,
+        id
+      );
+      $('#shoppingAutosaveStatus').textContent='Sincronizado com a família';
+    }catch(err){
+      toast(err.message || 'Não foi possível remover o item compartilhado.','error');
+    }
+  }else{
+    scheduleShoppingAutosave();
+  }
 
   if(item) toast(item.product+' removido da lista.','info');
 }
@@ -1389,6 +1675,16 @@ async function deleteActiveShoppingList(){
   const list=getActiveShoppingList();
   if(!list) return;
 
+  const shared=shoppingIsFamilyShared();
+  const canDelete=!shared
+    || familyContext?.profile?.role==='admin'
+    || list.createdBy===cloudUser?.uid;
+
+  if(!canDelete){
+    toast('Somente quem criou a lista ou o administrador pode excluí-la.','info');
+    return;
+  }
+
   const ok=await confirmDialog(
     'Excluir lista de compras?',
     'A lista "'+list.name+'" e todos os produtos cadastrados nela serão removidos.'
@@ -1396,11 +1692,28 @@ async function deleteActiveShoppingList(){
   if(!ok) return;
 
   await withLoading('Excluindo lista…','Removendo os produtos desta lista.',async function(){
-    appState.shoppingLists=appState.shoppingLists.filter(function(x){return x.id!==list.id;});
-    appState.shoppingActiveListId=appState.shoppingLists[0]?.id || '';
-    logAudit('shopping-list-delete',list.name);
-    renderShoppingLists();
-    await saveVault(true);
+    if(shared){
+      await window.StopGastosCloud.deleteFamilyShoppingList(
+        familyContext.family.id,
+        list.id
+      );
+
+      familyShoppingLists=familyShoppingLists.filter(function(x){
+        return x.id!==list.id;
+      });
+      appState.shoppingActiveListId=familyShoppingLists[0]?.id || '';
+      setupFamilyShoppingItemsWatcher(window.StopGastosCloud);
+      renderShoppingLists();
+      await saveVault();
+    }else{
+      appState.shoppingLists=appState.shoppingLists.filter(function(x){
+        return x.id!==list.id;
+      });
+      appState.shoppingActiveListId=appState.shoppingLists[0]?.id || '';
+      logAudit('shopping-list-delete',list.name);
+      renderShoppingLists();
+      await saveVault(true);
+    }
   });
 
   toast('Lista excluída.','success');
@@ -2715,6 +3028,7 @@ function clearFamilyWatchers(){
     try{familyMembersUnsubscribe();}catch(err){}
     familyMembersUnsubscribe=null;
   }
+  clearFamilyShoppingWatchers();
 }
 
 function rebuildFamilyStateWatchers(members,cloud){
@@ -2762,6 +3076,7 @@ async function refreshFamilyData(){
     familyInvitations=await cloud.getFamilyInvitations();
 
     clearFamilyWatchers();
+    setupFamilyShoppingWatchers(cloud);
 
     familyInviteUnsubscribe=cloud.watchFamilyInvitations(function(items){
       const previous=new Set(familyInvitations.map(i=>i.id));
@@ -2800,6 +3115,9 @@ async function refreshFamilyData(){
     familyLoadError=String(err?.message || err || 'Não foi possível carregar sua família.');
     familyStates={};
     familyInvitations=[];
+    familyShoppingLists=[];
+    clearFamilyShoppingWatchers();
+    renderShoppingLists();
     renderFamily();
     renderFamilyNotifications();
   }

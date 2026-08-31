@@ -745,7 +745,7 @@ async function deleteCurrentAccount(){
   if(context.family && context.family.ownerUid===uid){
     const outgoing=await getDocs(query(
       collection(db,'familyRequests'),
-      where('createdBy','==',uid)
+      where('familyId','==',context.family.id)
     ));
     for(const requestDoc of outgoing.docs){
       await deleteDoc(requestDoc.ref);

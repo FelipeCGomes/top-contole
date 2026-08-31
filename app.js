@@ -3040,7 +3040,7 @@ async function handleCloudUser(user){
       if(remote?.legacy && remote.state){
         try{
           const migratedResult=await cloud.migrateLegacyState(clone(remote.state));
-          if(migratedResult?.synced){
+          if(migratedResult?.migrated){
             cloudSyncedState=clone(normalizeState(remote.state));
             cloudSyncPending=false;
             cloudSyncDueAt=0;
@@ -3300,10 +3300,20 @@ function queueCloudPush(state,options={}){
         cloudSyncDueAt=0;
         localStateUpdatedAt=result?.clientUpdatedAt || localStateUpdatedAt;
         writeLocalState();
-        setCloudStatus('synced','Firestore atualizado agora');
+        setCloudStatus(
+          'synced',
+          result?.fallbackLegacy
+            ? 'Firestore salvo em state/main · publique as regras modulares para migrar data/*'
+            : 'Firestore atualizado agora'
+        );
       }
 
-      return {synced:true,result,sections:currentSections};
+      return {
+        synced:true,
+        result,
+        sections:currentSections,
+        fallbackLegacy:!!result?.fallbackLegacy
+      };
     }catch(err){
       const code=String(err?.code || '');
       const message=String(err?.message || err || 'Erro desconhecido');

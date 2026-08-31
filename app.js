@@ -2714,8 +2714,8 @@ function renderAccounts(){
     const monthOut=monthTx.filter(function(t){return t.accountId===a.id&&t.type==='expense';}).reduce(function(x,t){return x+Number(t.amount);},0);
     return '<article class="finance-card account-card" style="--accent:'+esc(a.color||'#7c5cff')+'"><div class="card-top"><span class="finance-icon">'+esc(a.icon||'🏦')+'</span><div class="card-menu"><button class="row-btn edit-account" data-id="'+a.id+'">✎</button><button class="row-btn delete-account" data-id="'+a.id+'">×</button></div></div><span>'+esc(a.type||'Conta')+'</span><h4>'+esc(a.name)+'</h4><strong class="finance-number">'+money(bal)+'</strong><div class="mini-stats"><span>Entradas <b>'+money(monthIn)+'</b></span><span>Saídas <b>'+money(monthOut)+'</b></span></div></article>';
   }).join('');
-  $('.edit-account').forEach(function(b){b.onclick=function(){const x=getAccount(b.dataset.id);if(x)openModal('account',x);};});
-  $('.delete-account').forEach(function(b){b.onclick=function(){deleteAccount(b.dataset.id);};});
+  $$('.edit-account').forEach(function(b){b.onclick=function(){const x=getAccount(b.dataset.id);if(x)openModal('account',x);};});
+  $$('.delete-account').forEach(function(b){b.onclick=function(){deleteAccount(b.dataset.id);};});
 }
 
 async function saveAccountForm(e){
@@ -2757,8 +2757,8 @@ function renderCards(){
     const committed=cardCommitted(c), inv=cardInvoice(c,selectedMonth), lim=Number(c.limit||0), pct=lim?committed/lim*100:0;
     return '<article class="credit-card" style="--card-bg:'+esc(c.color||'#141b34')+'"><div class="credit-top"><span>'+esc(c.brand||'Cartão')+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+c.id+'">✎</button><button class="row-btn delete-card" data-id="'+c.id+'">×</button></div></div><h4>'+esc(c.name)+'</h4><div class="credit-limit"><span>Fatura de '+shortMonth(selectedMonth)+'</span><strong>'+money(inv)+'</strong></div><div class="progress"><i style="width:'+Math.min(100,pct)+'%"></i></div><div class="credit-meta"><span>Limite '+money(lim)+'</span><span>Disponível '+money(Math.max(0,lim-committed))+'</span></div><small>Fecha dia '+Number(c.closingDay||1)+' · vence dia '+Number(c.dueDay||10)+'</small></article>';
   }).join('');
-  $('.edit-card').forEach(function(b){b.onclick=function(){const x=getCard(b.dataset.id);if(x)openModal('card',x);};});
-  $('.delete-card').forEach(function(b){b.onclick=function(){deleteCard(b.dataset.id);};});
+  $$('.edit-card').forEach(function(b){b.onclick=function(){const x=getCard(b.dataset.id);if(x)openModal('card',x);};});
+  $$('.delete-card').forEach(function(b){b.onclick=function(){deleteCard(b.dataset.id);};});
   const rows=appState.transactions.filter(function(t){return t.cardId&&t.type==='expense'&&(t.invoiceMonth||t.date.slice(0,7))===selectedMonth;}).sort(sortTxDesc);
   $('#cardInvoiceTable').innerHTML=rows.length?rows.map(function(t){
     const c=getCard(t.cardId);
@@ -2803,9 +2803,9 @@ function renderBills(){
     const cat=getCategory(b.category), overdue=!b.paid&&b.dueDate<today;
     return '<article class="bill-card '+(b.paid?'paid ':'')+(overdue?'overdue':'')+'"><div class="bill-date"><b>'+dateBR(b.dueDate)+'</b><span>'+(b.paid?'Pago':(overdue?'Vencido':'Pendente'))+'</span></div><div class="bill-main"><span>'+cat.icon+' '+esc(cat.name)+'</span><h4>'+esc(b.description)+'</h4><strong class="'+b.type+'">'+(b.type==='expense'?'- ':'+ ')+money(b.amount)+'</strong></div><div class="bill-actions">'+(!b.paid?'<button class="btn mini pay-bill" data-id="'+b.id+'">✓ Marcar pago</button>':'<span class="paid-badge">✓ concluído</span>')+'<button class="row-btn edit-bill" data-id="'+b.id+'">✎</button><button class="row-btn delete-bill" data-id="'+b.id+'">×</button></div></article>';
   }).join('');
-  $('.pay-bill').forEach(function(x){x.onclick=function(){payBill(x.dataset.id);};});
-  $('.edit-bill').forEach(function(x){x.onclick=function(){const b=appState.bills.find(function(y){return y.id===x.dataset.id;});if(b)openModal('bill',b);};});
-  $('.delete-bill').forEach(function(x){x.onclick=function(){deleteBill(x.dataset.id);};});
+  $$('.pay-bill').forEach(function(x){x.onclick=function(){payBill(x.dataset.id);};});
+  $$('.edit-bill').forEach(function(x){x.onclick=function(){const b=appState.bills.find(function(y){return y.id===x.dataset.id;});if(b)openModal('bill',b);};});
+  $$('.delete-bill').forEach(function(x){x.onclick=function(){deleteBill(x.dataset.id);};});
 }
 async function saveBillForm(e){
   return withLoading("Salvando compromisso…","Atualizando sua agenda financeira.",async function(){
@@ -2858,8 +2858,8 @@ function renderCategoryManager(){
     const label={essential:'Essencial',wants:'Desejos',future:'Futuro',income:'Receita'}[group]||'Outro';
     return '<div class="category-manage-row"><i style="background:'+esc(c.color)+'"></i><span>'+esc(c.icon+' '+c.name)+'</span><small>'+label+'</small><button class="row-btn edit-category" data-id="'+c.id+'">✎</button><button class="row-btn delete-category" data-id="'+c.id+'">×</button></div>';
   }).join('');
-  $('.edit-category').forEach(function(b){b.onclick=function(){const c=appState.categories.find(function(x){return x.id===b.dataset.id;});if(c)openModal('category',c);};});
-  $('.delete-category').forEach(function(b){b.onclick=function(){deleteCategory(b.dataset.id);};});
+  $$('.edit-category').forEach(function(b){b.onclick=function(){const c=appState.categories.find(function(x){return x.id===b.dataset.id;});if(c)openModal('category',c);};});
+  $$('.delete-category').forEach(function(b){b.onclick=function(){deleteCategory(b.dataset.id);};});
 }
 async function saveCategoryForm(e){
   return withLoading("Salvando categoria…","Atualizando a organização dos seus lançamentos.",async function(){

@@ -1,4 +1,4 @@
-const CACHE = 'stop-gastos-v17';
+const CACHE = 'stop-gastos-v18';
 const CORE = [
   './',
   './index.html',

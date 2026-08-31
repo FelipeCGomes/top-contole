@@ -89,7 +89,7 @@ O caminho `users/{uid}/state/main` é legado. Se as novas regras ainda não esti
 
 Em **Configurações > Conta e sincronização > Testar Firestore**, o aplicativo grava os módulos e relê diretamente do servidor, sem confiar apenas no cache do navegador.
 
-## 3. Diretório de usuários por e-mail
+## 4. Diretório de usuários por e-mail
 
 Quando um usuário entra no Stop Gastos com Google, o aplicativo registra uma entrada em:
 
@@ -109,7 +109,7 @@ O Firestore não permite listar a coleção inteira do diretório.
 
 Por isso, a pessoa precisa ter acessado o Stop Gastos ao menos uma vez antes de ser localizada pelo administrador.
 
-## 4. Fluxo Família
+## 5. Fluxo Família
 
 ### Administrador
 1. entra com Google;
@@ -136,7 +136,7 @@ Recusar:
 
 O admin pode reenviar um convite posteriormente para um vínculo recusado.
 
-## 5. Notificações
+## 6. Notificações
 
 O convite familiar é entregue em tempo real via listener do Firestore quando o Stop Gastos está aberto.
 
@@ -148,7 +148,7 @@ Para receber push com o aplicativo totalmente fechado, ainda é necessário:
 
 Nunca coloque service account, private key ou credencial administrativa no frontend.
 
-## 6. Dados antigos
+## 7. Dados antigos
 
 O aplicativo mantém uma tentativa de migração do antigo cofre AES-GCM caso a chave temporária da versão anterior ainda exista no mesmo navegador.
 

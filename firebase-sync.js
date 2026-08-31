@@ -788,12 +788,6 @@ async function saveFamilyShoppingItem(familyId,listId,item){
   }
 
   await setDoc(ref,payload,{merge:true});
-  await setDoc(familyShoppingListRef(familyId,listId),{
-    updatedBy:currentUser.uid,
-    updatedAt:serverTimestamp(),
-    clientUpdatedAt:new Date().toISOString()
-  },{merge:true});
-
   return {id:item.id,...payload};
 }
 
@@ -801,11 +795,6 @@ async function deleteFamilyShoppingItem(familyId,listId,itemId){
   requireUser();
   if(!familyId || !listId || !itemId) return;
   await deleteDoc(familyShoppingItemRef(familyId,listId,itemId));
-  await setDoc(familyShoppingListRef(familyId,listId),{
-    updatedBy:currentUser.uid,
-    updatedAt:serverTimestamp(),
-    clientUpdatedAt:new Date().toISOString()
-  },{merge:true});
 }
 
 async function deleteFamilyShoppingList(familyId,listId){

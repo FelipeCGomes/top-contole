@@ -326,6 +326,41 @@ function firestorePermissionDenied(error){
     || message.includes('missing or insufficient permissions');
 }
 
+
+async function verifyModularWrite(sections,clientUpdatedAt,uid=currentUser?.uid){
+  requireUser();
+
+  const results=await Promise.all(sections.map(async section=>{
+    const snapshot=await getDocFromServer(dataSectionRef(section,uid));
+    if(!snapshot.exists()) return {section,ok:false,reason:'missing'};
+
+    const data=snapshot.data() || {};
+    const sameStamp=String(data.clientUpdatedAt || '')===String(clientUpdatedAt || '');
+    return {section,ok:sameStamp,reason:sameStamp?'ok':'timestamp-mismatch'};
+  }));
+
+  const meta=await getDocFromServer(dataMetaRef(uid));
+  const metaData=meta.exists() ? (meta.data() || {}) : {};
+  const metaOk=meta.exists() && String(metaData.clientUpdatedAt || '')===String(clientUpdatedAt || '');
+
+  return {
+    ok:metaOk && results.every(item=>item.ok),
+    metaOk,
+    results
+  };
+}
+
+async function verifyLegacyWrite(clientUpdatedAt,uid=currentUser?.uid){
+  requireUser();
+
+  const snapshot=await getDocFromServer(stateRef(uid));
+  if(!snapshot.exists()) return {ok:false,reason:'missing'};
+
+  const data=snapshot.data() || {};
+  const ok=String(data.clientUpdatedAt || '')===String(clientUpdatedAt || '');
+  return {ok,reason:ok?'ok':'timestamp-mismatch'};
+}
+
 async function pushLegacyState(state,clientUpdatedAt){
   await setDoc(stateRef(),{
     state,
@@ -335,8 +370,14 @@ async function pushLegacyState(state,clientUpdatedAt){
   },{merge:true});
   await waitForPendingWrites(db);
 
+  const verification=await verifyLegacyWrite(clientUpdatedAt);
+  if(!verification.ok){
+    throw new Error('O Firestore não confirmou a gravação em users/{uid}/state/main.');
+  }
+
   return {
     synced:true,
+    serverConfirmed:true,
     clientUpdatedAt,
     fallbackLegacy:true,
     schemaVersion:1
@@ -380,8 +421,17 @@ async function pushState(state,options={}){
     await batch.commit();
     await waitForPendingWrites(db);
 
+    const verification=await verifyModularWrite(sections,clientUpdatedAt);
+    if(!verification.ok){
+      throw new Error(
+        'O Firestore não confirmou a gravação modular: '+
+        verification.results.filter(item=>!item.ok).map(item=>item.section).join(', ')
+      );
+    }
+
     return {
       synced:true,
+      serverConfirmed:true,
       clientUpdatedAt,
       sections,
       schemaVersion:STATE_SCHEMA_VERSION,

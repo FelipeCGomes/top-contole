@@ -3416,7 +3416,28 @@ async function handleCloudUser(user){
       }
 
       cloudStorageMode=remote?.modular ? 'modular' : remote?.legacy ? 'legacy' : cloudStorageMode;
+
+      const legacyIncomeNeedsMigration=!!(
+        remote?.state
+        && Array.isArray(remote.state.recurring)
+        && remote.state.recurring.some(function(item){return item && item.type==='income';})
+      );
+
       const source=applyBestState(local,remote);
+
+      if(legacyIncomeNeedsMigration && cloudSyncedState){
+        // Mantém o snapshot do servidor como baseline real para que o diff
+        // detecte recurring + incomeSources e grave a separação no Firestore.
+        cloudSyncedState.recurring=Array.isArray(remote.state.recurring)
+          ? clone(remote.state.recurring)
+          : [];
+        cloudSyncedState.incomeSources=Array.isArray(remote.state.incomeSources)
+          ? clone(remote.state.incomeSources)
+          : [];
+        cloudSyncPending=true;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+        writeLocalState();
+      }
 
       if(source==='empty'){
         appState=makeInitialState();

@@ -638,7 +638,11 @@
                     <span id="cloudSettingsDot" class="sync-dot"></span>
                     <span id="cloudSettingsStatus">Firebase ainda não configurado.</span>
                   </div>
-                  <p class="form-hint">Estrutura principal: <strong>users/{uid}/data/*</strong> · cache local usado somente para offline e recuperação.</p>
+                  <div class="firestore-path-box">
+                    <span>Banco principal</span>
+                    <strong id="cloudDataPath">users/{uid}/data/*</strong>
+                    <small id="cloudDataMode">Firestore modular · cache local somente para offline</small>
+                  </div>
                 </div>
               </article>
             </div>
@@ -651,9 +655,12 @@
                 <div><span class="settings-icon">◐</span><div><h3>Aparência</h3><p class="muted">Escolha o tema do Stop Gastos.</p></div></div>
                 <select id="themeSelect"><option value="system">Seguir sistema</option><option value="dark">Escuro</option><option value="light">Claro</option></select>
               </article>
-              <article class="panel settings-card">
+              <article class="panel settings-card settings-budget-card">
                 <div><span class="settings-icon">◎</span><div><h3>Limite mensal geral</h3><p class="muted">Usado no indicador principal do dashboard.</p></div></div>
-                <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" /></div>
+                <div class="settings-control-stack">
+                  <div class="money-input"><span>R$</span><input id="monthlyBudgetInput" type="number" min="0" step="0.01" inputmode="decimal" /></div>
+                  <small id="monthlyBudgetSaveStatus" class="settings-save-status">Firestore · users/{uid}/data/settings</small>
+                </div>
               </article>
               <article class="panel settings-card category-settings">
                 <div><span class="settings-icon">◈</span><div><h3>Categorias personalizadas</h3><p class="muted">Crie categorias, ícones, cores e classifique como essencial, desejo ou futuro.</p></div></div>

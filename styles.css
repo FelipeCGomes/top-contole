@@ -1173,20 +1173,57 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 
 /* Credit cards */
 .credit-card{
+  position:relative;
+  isolation:isolate;
   min-height:205px;
-  color:#fff;
-  border-color:rgba(255,255,255,.12);
-  background:linear-gradient(145deg,var(--card-bg,#18233e),#0b1224);
+  overflow:hidden;
+  color:var(--card-fg,#fff);
+  border-color:var(--card-border,rgba(255,255,255,.12));
+  background:
+    radial-gradient(circle at 92% 8%,rgba(255,255,255,.13),transparent 31%),
+    linear-gradient(145deg,var(--card-bg,#18233e),var(--card-bg-2,#0b1224));
 }
-.credit-card .row-btn{color:#fff}
-.credit-top>span{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.8}
-.credit-card h4{margin:24px 0 18px;font-size:18px}
+.credit-card::after{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:auto -48px -72px auto;
+  width:180px;
+  height:180px;
+  border-radius:50%;
+  background:rgba(255,255,255,.055);
+  pointer-events:none;
+}
+.credit-card.light-card::after{background:rgba(16,24,39,.045)}
+.credit-card .row-btn{color:var(--card-fg,#fff)}
+.credit-card .row-btn:hover{background:var(--card-track,rgba(255,255,255,.12));color:var(--card-fg,#fff)}
+.credit-top>span{
+  color:var(--card-muted,rgba(255,255,255,.78));
+  font-size:9px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.1em
+}
+.credit-card h4{margin:24px 0 18px;color:var(--card-fg,#fff);font-size:18px}
 .credit-limit{align-items:flex-end}
-.credit-limit span{font-size:8px;opacity:.75}
-.credit-limit strong{font-size:21px}
-.credit-card .progress{margin-top:8px;background:rgba(255,255,255,.15)}
-.credit-meta{margin-top:7px;font-size:8px;opacity:.8}
-.credit-card>small{display:block;margin-top:14px;font-size:8px;opacity:.7}
+.credit-limit span{color:var(--card-muted,rgba(255,255,255,.72));font-size:8px}
+.credit-limit strong{color:var(--card-fg,#fff);font-size:21px}
+.credit-card .progress{margin-top:8px;background:var(--card-track,rgba(255,255,255,.15))}
+.credit-meta{
+  margin-top:7px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:var(--card-muted,rgba(255,255,255,.78));
+  font-size:8px
+}
+.credit-card>small{
+  display:block;
+  margin-top:14px;
+  color:var(--card-muted,rgba(255,255,255,.7));
+  font-size:8px
+}
+.credit-card.light-card{box-shadow:0 11px 28px rgba(20,31,52,.10)}
 .installment-pill{color:#a99cff}
 
 /* Bills */
@@ -1639,12 +1676,22 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 
 /* Benefit cards */
 .credit-card.benefit-card{
+  border-color:var(--card-border,rgba(255,255,255,.12));
   background:
-    linear-gradient(135deg,rgba(22,199,183,.10),transparent 60%),
-    var(--surface);
+    radial-gradient(circle at 90% 4%,rgba(255,255,255,.18),transparent 30%),
+    linear-gradient(145deg,var(--card-bg,#16866f),var(--card-bg-2,#0f5648));
+}
+.credit-card.benefit-card.light-card{
+  background:
+    radial-gradient(circle at 90% 4%,rgba(255,255,255,.30),transparent 30%),
+    linear-gradient(145deg,var(--card-bg,#d9f4ea),var(--card-bg-2,#eefaf6));
 }
 .credit-card.benefit-card .progress i{
   background:linear-gradient(90deg,var(--accent),var(--income));
+  box-shadow:0 0 10px rgba(22,199,183,.24);
+}
+.credit-card.benefit-card.light-card .progress i{
+  background:linear-gradient(90deg,#107a68,#27a982);
 }
 .credit-fields.benefit-mode>label:nth-child(2){display:none}
 .credit-fields.benefit-mode .installment-preview{grid-column:1/-1}
@@ -2324,3 +2371,15 @@ body.is-loading{cursor:wait}
 .main,.topbar,.view,.panel,.settings-section,.settings-card,.card-grid,.goal-grid,.insight-grid,.summary-chips,.dashboard-grid{min-width:0}
 .card-grid>*,.goal-grid>*,.insight-grid>*,.summary-chips>*,.dashboard-grid>*,.settings-grid>*{min-width:0}
 .section-toolbar p,.settings-section-head p,.panel-head h3{overflow-wrap:anywhere}
+
+
+@media(hover:hover) and (pointer:fine){
+  .credit-card:hover,
+  .income-source-card:hover,
+  .goal-card:hover,
+  .bill-card:hover,
+  .rec-card:hover{
+    transform:translateY(-3px);
+    box-shadow:0 16px 34px rgba(9,18,37,.14);
+  }
+}

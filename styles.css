@@ -808,6 +808,155 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .family-table-wrap{margin-top:2px}
 .data-table{width:100%}
 
+
+/* Shopping list */
+.shopping-toolbar-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.shopping-toolbar-actions select{width:auto;min-width:220px}
+.shopping-summary small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:7px;
+  line-height:1.35;
+}
+.shopping-panel{overflow:hidden}
+.shopping-panel-head{align-items:flex-end}
+.shopping-panel-head>div:first-child p{margin:4px 0 0;font-size:9px}
+.shopping-save-state{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.shopping-autosave{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:750;
+}
+.shopping-autosave.saving{color:var(--warning)}
+.shopping-autosave.saving::before{
+  content:"";
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin-right:5px;
+  border:1.5px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  vertical-align:-1px;
+  animation:loadingSpin .7s linear infinite;
+}
+.shopping-add-row{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) 100px 150px auto;
+  align-items:end;
+  gap:9px;
+  margin:2px 0 14px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--surface-2);
+}
+.shopping-add-row[hidden]{display:none!important}
+.shopping-add-row .btn{height:40px}
+.shopping-money-input{width:100%}
+.shopping-grid-wrap{
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--surface);
+}
+.shopping-grid-wrap[hidden]{display:none!important}
+.shopping-grid-head,
+.shopping-grid-row{
+  display:grid;
+  grid-template-columns:52px minmax(180px,1fr) 100px 150px 130px 42px;
+  align-items:center;
+}
+.shopping-grid-head{
+  min-height:38px;
+  padding:0 4px;
+  border-bottom:1px solid var(--line);
+  color:var(--muted);
+  background:var(--surface-2);
+  font-size:8px;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.shopping-grid-head span{padding:0 8px}
+.shopping-grid-row{
+  min-height:54px;
+  padding:0 4px;
+  border-bottom:1px solid var(--line);
+  transition:background .15s ease;
+}
+.shopping-grid-row:last-child{border-bottom:0}
+.shopping-grid-row:hover{background:rgba(123,97,255,.035)}
+.shopping-cell{min-width:0;padding:7px 8px}
+.shopping-cell-order span{
+  width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  color:var(--muted);
+  background:var(--surface-2);
+  font-size:8px;
+  font-weight:850;
+}
+.shopping-inline-input{
+  width:100%;
+  height:34px;
+  padding:0 9px;
+  border:1px solid transparent;
+  border-radius:9px;
+  background:transparent;
+  box-shadow:none;
+  font-size:10px;
+}
+.shopping-inline-input:hover{border-color:var(--line);background:var(--surface-2)}
+.shopping-inline-input:focus{border-color:rgba(123,97,255,.42);background:var(--surface-2)}
+.shopping-qty-input{text-align:center}
+.shopping-row-money{
+  width:100%;
+  min-width:0;
+  background:var(--surface-2);
+}
+.shopping-row-money input{
+  min-width:0;
+  height:32px;
+  padding:0 6px;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+}
+.shopping-cell-total strong{
+  font-size:10px;
+  white-space:nowrap;
+}
+.shopping-cell-actions{display:flex;justify-content:center}
+.shopping-empty{padding-block:44px}
+.shopping-empty .btn{margin-top:14px}
+.shopping-items-empty{
+  border-radius:0;
+  padding:26px 16px;
+}
+.privacy-mode #shoppingAverage,
+.privacy-mode #shoppingTotal,
+.privacy-mode .shopping-cell-unit input,
+.privacy-mode .shopping-cell-total strong{
+  filter:blur(7px);
+  user-select:none;
+}
+
 /* Credit cards */
 .credit-card{
   min-height:205px;
@@ -1500,6 +1649,70 @@ body.is-loading{cursor:wait}
   .budget-ring{width:110px;height:110px}
   .donut{width:102px;height:102px}
   .section-toolbar{align-items:stretch;flex-direction:column}
+  .shopping-toolbar-actions{width:100%;justify-content:stretch}
+  .shopping-toolbar-actions select{width:100%;min-width:0}
+  .shopping-toolbar-actions .btn{flex:1}
+  .shopping-panel-head{align-items:flex-start;flex-direction:column}
+  .shopping-save-state{width:100%;justify-content:space-between}
+  .shopping-add-row{grid-template-columns:1fr 1fr;padding:10px}
+  .shopping-add-row .shopping-product-field{grid-column:1/-1}
+  .shopping-add-row .btn{grid-column:1/-1;width:100%}
+  .shopping-grid-wrap{border:0;background:transparent;overflow:visible}
+  .shopping-grid-head{display:none}
+  .shopping-grid-body{display:grid;gap:9px}
+  .shopping-grid-row{
+    position:relative;
+    min-height:0;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    padding:13px;
+    border:1px solid var(--line);
+    border-radius:13px;
+    background:var(--surface);
+  }
+  .shopping-grid-row:last-child{border-bottom:1px solid var(--line)}
+  .shopping-cell{padding:0;display:grid;gap:4px}
+  .shopping-cell::before{
+    content:attr(data-label);
+    color:var(--muted);
+    font-size:7px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+  }
+  .shopping-cell-product{
+    grid-column:1/-1;
+    padding-left:34px;
+    padding-right:30px;
+  }
+  .shopping-cell-order{
+    position:absolute;
+    left:13px;
+    top:14px;
+    width:25px;
+    display:block;
+  }
+  .shopping-cell-order::before{display:none}
+  .shopping-cell-actions{
+    position:absolute;
+    right:13px;
+    top:13px;
+    display:block;
+  }
+  .shopping-cell-actions::before{display:none}
+  .shopping-cell-total{
+    grid-column:1/-1;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding-top:8px;
+    border-top:1px solid var(--line);
+  }
+  .shopping-cell-total::before{display:block}
+  .shopping-cell-total strong{font-size:13px}
+  .shopping-inline-input{height:38px;border-color:var(--line);background:var(--surface-2)}
+  .shopping-row-money{height:38px}
+
   .search-box{width:100%;min-width:0}
   .filter-row{width:100%}
   .filter-row select{flex:1;min-width:0}

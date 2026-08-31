@@ -2739,6 +2739,20 @@ async function saveTransactionForm(e){
 
     if(existing){
       const previousCount=normalizedInstallmentCount(existing.installmentCount || 1);
+
+      if(existing.sourceRecurringId && existing.sourceType==='recurringExpense'){
+        const sourceRecurring=appState.recurring.find(function(r){
+          return r.id===existing.sourceRecurringId;
+        });
+
+        if(sourceRecurring){
+          sourceRecurring.payment=payment;
+          sourceRecurring.cardId=usesCard ? cardId : '';
+          sourceRecurring.installmentCount=isCredit ? requestedInstallments : 1;
+          sourceRecurring.updatedAt=new Date().toISOString();
+        }
+      }
+
       const records=replaceTransactionInstallmentPlan(
         existing,
         base,
@@ -4970,6 +4984,7 @@ function bindV2Events(){
   $('#recPayment').addEventListener('change',updateRecurringPaymentFields);
   $('#recCard').addEventListener('change',updateRecurringPaymentFields);
   $('#recAmount').addEventListener('input',updateRecurringPaymentFields);
+  $('#recDay').addEventListener('input',updateRecurringPaymentFields);
   $('#recInstallments').addEventListener('input',updateRecurringPaymentFields);
   $('#printReportBtn').addEventListener('click',function(){window.print();});
 }

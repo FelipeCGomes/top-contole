@@ -1016,8 +1016,7 @@ async function getFamilyStates(){
 
   await Promise.all(readable.map(async member=>{
     try{
-      const snap=await getDoc(stateRef(member.uid));
-      states[member.uid]=stateResult(snap);
+      states[member.uid]=await pullState(member.uid);
     }catch(err){
       states[member.uid]=null;
     }
@@ -1216,6 +1215,12 @@ async function deleteCurrentAccount(){
     await deleteDoc(device.ref);
   }
 
+  const modularData=await getDocs(collection(db,'users',uid,'data'));
+  for(const dataDoc of modularData.docs){
+    await deleteDoc(dataDoc.ref);
+  }
+
+  // Documento legado mantido apenas para compatibilidade/migração.
   await deleteDoc(stateRef(uid));
   await deleteDoc(profileRef(uid));
 

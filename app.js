@@ -3044,6 +3044,7 @@ async function handleCloudUser(user){
           }
         }catch(migrationError){
           console.error('Stop Gastos modular Firestore migration:',migrationError);
+          cloudSyncedState=null;
           cloudSyncPending=true;
           cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
           writeLocalState();
@@ -3168,8 +3169,18 @@ async function cloudSignOut(){
     clearFamilyWatchers();
     if(cloudVaultUnsubscribe){try{cloudVaultUnsubscribe();}catch(err){} cloudVaultUnsubscribe=null;}
     await cloud.signOutGoogle();
+
+    if(cloudPushTimer){
+      clearTimeout(cloudPushTimer);
+      cloudPushTimer=null;
+    }
+
     cloudUser=null;
     appState=null;
+    cloudSyncedState=null;
+    cloudSyncPending=false;
+    cloudSyncDueAt=0;
+    cloudSyncInFlight=false;
     familyContext=null;
     familyStates={};
     showSignedOutScreen();
@@ -3222,6 +3233,14 @@ function queueCloudPush(state,options={}){
   }
 
   const run=async function(){
+    if(!navigator.onLine){
+      cloudSyncPending=true;
+      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+      writeLocalState();
+      setCloudStatus('offline','Offline · alterações pendentes para o Firestore');
+      return {queued:true,offline:true};
+    }
+
     if(cloudSyncInFlight){
       cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
       writeLocalState();

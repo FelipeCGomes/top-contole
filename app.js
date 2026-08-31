@@ -2936,8 +2936,13 @@ function bindCloudEvents(){
   });
   window.addEventListener('online',function(){
     if(cloudUser && cloudSyncPending && appState){
+      const remainingDelay=cloudSyncDueAt
+        ? Math.max(0,cloudSyncDueAt-Date.now())
+        : CLOUD_SYNC_DELAY_MS;
+
       queueCloudPush(clone(appState),{
-        force:false,
+        force:remainingDelay<=0,
+        delayMs:remainingDelay,
         sections:changedStateSections(appState)
       });
     }else if(cloudUser){
@@ -3012,7 +3017,7 @@ async function handleCloudUser(user){
         appState=migrated;
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+        cloudSyncDueAt=Date.now()+delayMs;
         writeLocalState();
         local=readLocalState();
         toast('Dados antigos encontrados. Migração para o Firestore será feita automaticamente.','info');
@@ -3028,7 +3033,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+        cloudSyncDueAt=Date.now()+delayMs;
         writeLocalState();
       }
 
@@ -3046,7 +3051,7 @@ async function handleCloudUser(user){
           console.error('Stop Gastos modular Firestore migration:',migrationError);
           cloudSyncedState=null;
           cloudSyncPending=true;
-          cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+          cloudSyncDueAt=Date.now()+delayMs;
           writeLocalState();
         }
       }
@@ -3058,8 +3063,13 @@ async function handleCloudUser(user){
       if(recurringChanged){
         await saveVault(false);
       }else if(cloudSyncPending || source==='local-pending' || source==='empty'){
+        const remainingDelay=local?.syncDueAt
+          ? Math.max(0,Number(local.syncDueAt)-Date.now())
+          : CLOUD_SYNC_DELAY_MS;
+
         await queueCloudPush(clone(appState),{
-          force:false,
+          force:remainingDelay<=0,
+          delayMs:remainingDelay,
           sections:changedStateSections(appState)
         });
       }
@@ -3086,7 +3096,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=local.clientUpdatedAt || '';
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+        cloudSyncDueAt=Date.now()+delayMs;
         writeLocalState();
         openApp();
         setCloudStatus(
@@ -3100,7 +3110,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+        cloudSyncDueAt=Date.now()+delayMs;
         writeLocalState();
         openApp();
         setCloudStatus('error','Firestore indisponível · alteração ficará pendente');
@@ -3195,6 +3205,10 @@ async function cloudSignOut(){
 
 function queueCloudPush(state,options={}){
   const force=options===true || options?.force===true;
+  const requestedDelay=Number(options?.delayMs);
+  const delayMs=force
+    ? 0
+    : (Number.isFinite(requestedDelay) ? Math.max(0,requestedDelay) : CLOUD_SYNC_DELAY_MS);
   const cloud=window.StopGastosCloud;
 
   if(cloudPushTimer){
@@ -3219,14 +3233,14 @@ function queueCloudPush(state,options={}){
   cloudSyncPending=true;
 
   if(!cloud || !cloud.ready || !cloud.isSignedIn()){
-    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+    cloudSyncDueAt=Date.now()+delayMs;
     writeLocalState();
     setCloudStatus('offline','Alterações pendentes · aguardando conexão com Firebase');
     return Promise.resolve({queued:true,localOnly:true,sections});
   }
 
   if(!navigator.onLine && !force){
-    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+    cloudSyncDueAt=Date.now()+delayMs;
     writeLocalState();
     setCloudStatus('offline','Offline · alterações pendentes para o Firestore');
     return Promise.resolve({queued:true,offline:true,sections});
@@ -3324,18 +3338,26 @@ function queueCloudPush(state,options={}){
     return run();
   }
 
-  cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+  cloudSyncDueAt=Date.now()+delayMs;
   writeLocalState();
-  setCloudStatus('syncing','Alterações pendentes · sincronização automática em 10s');
+
+  if(delayMs<=0){
+    return run();
+  }
+
+  setCloudStatus(
+    'syncing',
+    'Alterações pendentes · sincronização automática em '+Math.ceil(delayMs/1000)+'s'
+  );
 
   cloudPushTimer=setTimeout(function(){
     cloudPushTimer=null;
     run().catch(function(){});
-  },CLOUD_SYNC_DELAY_MS);
+  },delayMs);
 
   return Promise.resolve({
     queued:true,
-    delayMs:CLOUD_SYNC_DELAY_MS,
+    delayMs,
     sections
   });
 }
@@ -3674,7 +3696,7 @@ function markCloudSynced(state,clientUpdatedAt){
 
 function markCloudPending(){
   cloudSyncPending=true;
-  cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+  cloudSyncDueAt=Date.now()+delayMs;
   writeLocalState();
 }
 
@@ -3692,7 +3714,7 @@ function applyBestState(local,remote){
       appState=normalizeState(local.state);
       localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
       cloudSyncPending=true;
-      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+      cloudSyncDueAt=Date.now()+delayMs;
       writeLocalState();
       return 'local-pending';
     }
@@ -3710,7 +3732,7 @@ function applyBestState(local,remote){
     localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
     cloudSyncedState=null;
     cloudSyncPending=true;
-    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+    cloudSyncDueAt=Date.now()+delayMs;
     writeLocalState();
     return 'local-pending';
   }

@@ -1,0 +1,265 @@
+name: Apply installment consistency repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-installment-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair installment behavior
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('app.js')
+          app = app_path.read_text(encoding='utf-8')
+
+          def require(text, label):
+              if text not in app:
+                  raise SystemExit(f'Missing expected block: {label}')
+
+          # 1) Legacy recurring transactions may not have sourceType.
+          old = "if(existing.sourceRecurringId && existing.sourceType==='recurringExpense'){"
+          require(old, 'legacy recurring source condition')
+          app = app.replace(old, "if(existing.sourceRecurringId){", 1)
+
+          old = """          sourceRecurring.installmentCount=isCredit ? requestedInstallments : 1;
+          sourceRecurring.updatedAt=new Date().toISOString();"""
+          require(old, 'source recurring installment update')
+          new = """          sourceRecurring.installmentCount=isCredit ? requestedInstallments : 1;
+          sourceRecurring.installmentStartMonth=isCredit && requestedInstallments>1
+            ? String(existing.purchaseDate || purchaseDate || existing.date || '').slice(0,7)
+            : '';
+          sourceRecurring.updatedAt=new Date().toISOString();"""
+          app = app.replace(old, new, 1)
+
+          # 2) Propagate recurring origin to newly-created installments when 1x becomes Nx.
+          old = """  const recurrenceBase=existing?.recurrenceBaseKey
+    || (existing?.sourceRecurringId ? (existing.recurrenceKey || '') : '');
+
+  const records=amounts.map(function(amount,index){"""
+          require(old, 'installment recurrence base')
+          new = """  const recurrenceBase=existing?.recurrenceBaseKey
+    || (existing?.sourceRecurringId ? (existing.recurrenceKey || '') : '');
+  const sourceRecurringId=existing?.sourceRecurringId || base.sourceRecurringId || '';
+  const sourceType=existing?.sourceType || base.sourceType || '';
+
+  const records=amounts.map(function(amount,index){"""
+          app = app.replace(old, new, 1)
+
+          old = """      installmentCount:effectiveCount,
+      installmentAmount:amount,
+      updatedAt:new Date().toISOString(),"""
+          require(old, 'installment record fields')
+          new = """      installmentCount:effectiveCount,
+      installmentAmount:amount,
+      sourceRecurringId:previousRecord.sourceRecurringId || sourceRecurringId,
+      sourceType:previousRecord.sourceType || sourceType,
+      updatedAt:new Date().toISOString(),"""
+          app = app.replace(old, new, 1)
+
+          # 3) Helper: a parcelled fixed cost has a single anchor month.
+          marker = "async function saveRecurringForm(e){"
+          require(marker, 'saveRecurringForm marker')
+          helper = """function recurringPlanAnchorMonth(recurring,fallbackMonth){
+  if(!recurring) return fallbackMonth;
+  if(recurring.installmentStartMonth) return recurring.installmentStartMonth;
+
+  const existingMonths=(appState?.transactions || [])
+    .filter(function(t){
+      return t.sourceRecurringId===recurring.id
+        && normalizedInstallmentCount(t.installmentCount || 1)>1;
+    })
+    .map(function(t){
+      return String(t.purchaseDate || t.date || '').slice(0,7);
+    })
+    .filter(Boolean)
+    .sort();
+
+  return existingMonths[0] || fallbackMonth;
+}
+
+"""
+          if 'function recurringPlanAnchorMonth(' not in app:
+              app = app.replace(marker, helper + marker, 1)
+
+          # 4) Save the recurring plan anchor and reuse it on edits.
+          start = app.index('async function saveRecurringForm(e){')
+          end = app.index('async function saveBudgetForm(e){', start)
+          seg = app[start:end]
+
+          old = """    const record={
+      id:id || uid('rec'),"""
+          if old not in seg:
+              raise SystemExit('Missing recurring record start')
+          new = """    const previous=id
+      ? appState.recurring.find(function(r){return r.id===id;})
+      : null;
+    const previousAnchor=previous
+      ? recurringPlanAnchorMonth(previous,selectedMonth)
+      : selectedMonth;
+    const installmentStartMonth=isCredit && installmentCount>1
+      ? (previous?.installmentStartMonth || previousAnchor || selectedMonth)
+      : '';
+
+    const record={
+      id:id || uid('rec'),"""
+          seg = seg.replace(old, new, 1)
+
+          old = """      cardId,
+      installmentCount,
+      active:$('#recActive').checked,"""
+          if old not in seg:
+              raise SystemExit('Missing recurring installment record fields')
+          new = """      cardId,
+      installmentCount,
+      installmentStartMonth,
+      active:$('#recActive').checked,"""
+          seg = seg.replace(old, new, 1)
+
+          old = """    const index=appState.recurring.findIndex(function(r){return r.id===id;});
+    const previous=index>=0 ? appState.recurring[index] : null;
+
+    if(index>=0){"""
+          if old not in seg:
+              raise SystemExit('Missing recurring previous block')
+          new = """    const index=appState.recurring.findIndex(function(r){return r.id===id;});
+
+    if(index>=0){"""
+          seg = seg.replace(old, new, 1)
+
+          old = "    syncRecurringTransactionForMonth(record,selectedMonth);"
+          if old not in seg:
+              raise SystemExit('Missing recurring sync call')
+          new = """    const syncMonth=installmentStartMonth || previousAnchor || selectedMonth;
+    syncRecurringTransactionForMonth(record,syncMonth);"""
+          seg = seg.replace(old, new, 1)
+
+          app = app[:start] + seg + app[end:]
+
+          # 5) Do not create a new Nx purchase every time another month is viewed.
+          old = """  appState.recurring
+    .filter(function(r){return r && r.active!==false && r.type!=='income';})
+    .forEach(function(r){syncRecurringTransactionForMonth(r,monthKey);});"""
+          if old not in app:
+              raise SystemExit('Missing ensureRecurringForMonth expense block')
+          new = """  appState.recurring
+    .filter(function(r){return r && r.active!==false && r.type!=='income';})
+    .forEach(function(r){
+      const card=r.cardId ? getCard(r.cardId) : null;
+      const finiteInstallment=!!(
+        card
+        && r.payment==='Cartão de crédito'
+        && !isBenefitCard(card)
+        && normalizedInstallmentCount(r.installmentCount || 1)>1
+      );
+
+      const targetMonth=finiteInstallment
+        ? recurringPlanAnchorMonth(r,monthKey)
+        : monthKey;
+
+      if(finiteInstallment && !r.installmentStartMonth){
+        r.installmentStartMonth=targetMonth;
+      }
+
+      syncRecurringTransactionForMonth(r,targetMonth);
+    });"""
+          app = app.replace(old, new, 1)
+
+          # 6) Make the recurring preview explicit about finite installment behavior.
+          old = """  $('#recInstallmentPreview').textContent=count>1
+    ? count+'x de aproximadamente '+money(total/count)+' · próximas '+count+' faturas'
+    : 'À vista · lançamento mensal na fatura';"""
+          if old in app:
+              new = """  $('#recInstallmentPreview').textContent=count>1
+    ? count+'x de aproximadamente '+money(total/count)+' · série única nas próximas '+count+' faturas'
+    : 'À vista · cobrança recorrente mensal na fatura';"""
+              app = app.replace(old, new, 1)
+
+          app_path.write_text(app, encoding='utf-8')
+
+          # Asset cache bust.
+          index_path = Path('index.html')
+          index = index_path.read_text(encoding='utf-8')
+          for asset in ['styles.css','firebase-config.js','firebase-sync.js','app.js']:
+              index = re.sub(re.escape(asset) + r'\?v=\d+', asset + '?v=32', index)
+          index_path.write_text(index, encoding='utf-8')
+
+          sw_path = Path('service-worker.js')
+          sw = sw_path.read_text(encoding='utf-8')
+          sw = re.sub(r"const CACHE = 'stop-gastos-v\d+';", "const CACHE = 'stop-gastos-v32';", sw)
+          sw_path.write_text(sw, encoding='utf-8')
+
+          # CI regression check.
+          quality_path = Path('.github/workflows/quality.yml')
+          quality = quality_path.read_text(encoding='utf-8')
+          if 'Validate installment edit consistency' not in quality:
+              anchor = '      - name: Validate CSS structure\n'
+              if anchor not in quality:
+                  raise SystemExit('Missing quality workflow CSS anchor')
+              step = '''      - name: Validate installment edit consistency
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+          const checks = [
+            ['transaction installment input exists', html.includes('id="txInstallments"')],
+            ['recurring installment input exists', html.includes('id="recInstallments"')],
+            ['legacy recurring edit supported', !js.includes("existing.sourceRecurringId && existing.sourceType==='recurringExpense'")],
+            ['recurring anchor helper exists', /function\\s+recurringPlanAnchorMonth\\s*\\(/.test(js)],
+            ['recurring stores installment anchor', js.includes('installmentStartMonth')],
+            ['installment origin is propagated', js.includes('sourceRecurringId:previousRecord.sourceRecurringId || sourceRecurringId')],
+            ['finite recurring plan uses anchor', /finiteInstallment[\\s\\S]{0,700}recurringPlanAnchorMonth/.test(js)]
+          ];
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Installment consistency validation failed:', failed);
+            process.exit(1);
+          }
+          console.log('Installment edit consistency OK');
+          NODE
+
+'''
+              quality = quality.replace(anchor, step + anchor, 1)
+              quality_path.write_text(quality, encoding='utf-8')
+
+          # Documentation.
+          readme_path = Path('README.md')
+          readme = readme_path.read_text(encoding='utf-8')
+          if '### Parcelamento em lançamentos e custos fixos' not in readme:
+              readme += '''\n### Parcelamento em lançamentos e custos fixos\n\n- Cartão de crédito permite 1x (à vista) ou parcelamento de 2x a 60x.\n- Editar uma compra de 1x para Nx recria o plano de parcelas e preserva o vínculo com o custo fixo de origem.\n- Custos fixos parcelados usam uma única série de parcelas ancorada no mês da compra, evitando criar uma nova compra parcelada a cada mês.\n- Lançamentos antigos gerados por custos fixos, mesmo sem `sourceType`, são migrados pelo vínculo `sourceRecurringId`.\n- Vale-refeição, vale-alimentação e vale-combustível não são parceláveis.\n'''
+              readme_path.write_text(readme, encoding='utf-8')
+
+          # One-time workflow removes itself in the repair commit.
+          Path('.github/workflows/apply-installment-fix.yml').unlink()
+          PY
+
+      - name: Validate syntax
+        run: |
+          node --check app.js
+          node --check firebase-sync.js
+
+      - name: Commit repair
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html service-worker.js README.md .github/workflows/quality.yml .github/workflows/apply-installment-fix.yml
+          git commit -m "fix: keep edited card installments and recurring plan consistent"
+          git push

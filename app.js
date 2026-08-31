@@ -61,11 +61,131 @@ const pageMeta = {
   bills:['Contas a pagar','Compromissos financeiros futuros'],
   reports:['Relatórios','Entenda seus hábitos financeiros'],
   family:['Família','Membros, gastos e visão consolidada'],
-  settings:['Configurações','Conta Google, aparência e backups']
+  settings:['Configurações','Conta Google, aparência e backups'],
+  about:['Sobre','Conheça o Stop Gastos'],
+  terms:['Termos de Uso','Condições para utilização do aplicativo'],
+  privacy:['Política de Privacidade','Como seus dados são utilizados e protegidos']
 };
 
 const $ = function(sel, root){ return (root || document).querySelector(sel); };
-const $$ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
+const $ = function(sel, root){ return Array.from((root || document).querySelectorAll(sel)); };
+
+let loadingDepth=0;
+
+function showLoading(title,message){
+  const overlay=$('#globalLoader');
+  if(!overlay) return;
+  loadingDepth++;
+  const titleEl=$('#loadingTitle');
+  const messageEl=$('#loadingMessage');
+  if(titleEl) titleEl.textContent=title || 'Processando…';
+  if(messageEl) messageEl.textContent=message || 'Aguarde um instante.';
+  overlay.hidden=false;
+  document.body.classList.add('is-loading');
+}
+
+function updateLoading(title,message){
+  const titleEl=$('#loadingTitle');
+  const messageEl=$('#loadingMessage');
+  if(title && titleEl) titleEl.textContent=title;
+  if(message && messageEl) messageEl.textContent=message;
+}
+
+function hideLoading(){
+  loadingDepth=Math.max(0,loadingDepth-1);
+  if(loadingDepth>0) return;
+  const overlay=$('#globalLoader');
+  if(overlay) overlay.hidden=true;
+  document.body.classList.remove('is-loading');
+}
+
+async function withLoading(title,message,task){
+  showLoading(title,message);
+  try{
+    return await task();
+  }finally{
+    hideLoading();
+  }
+}
+
+function openDeleteAccountDialog(){
+  if(!cloudUser){
+    toast('Entre com Google para excluir sua conta.','info');
+    return;
+  }
+  const modal=$('#deleteAccountBackdrop');
+  const input=$('#deleteAccountConfirmInput');
+  const button=$('#deleteAccountConfirmBtn');
+  if(!modal || !input || !button) return;
+  input.value='';
+  button.disabled=true;
+  modal.hidden=false;
+  document.body.style.overflow='hidden';
+  setTimeout(function(){input.focus();},30);
+}
+
+function closeDeleteAccountDialog(){
+  const modal=$('#deleteAccountBackdrop');
+  if(modal) modal.hidden=true;
+  const input=$('#deleteAccountConfirmInput');
+  if(input) input.value='';
+  const button=$('#deleteAccountConfirmBtn');
+  if(button) button.disabled=true;
+  document.body.style.overflow='';
+}
+
+async function deleteUserAccountFromUi(){
+  const input=$('#deleteAccountConfirmInput');
+  if(!input || input.value.trim().toUpperCase()!=='EXCLUIR') return;
+
+  const cloud=window.StopGastosCloud;
+  if(!cloud || !cloud.isSignedIn()){
+    closeDeleteAccountDialog();
+    toast('Sua sessão Google não está ativa.','error');
+    return;
+  }
+
+  const uidToClear=cloudUser?.uid || '';
+  try{
+    await withLoading(
+      'Excluindo sua conta…',
+      'Confirme sua identidade na janela do Google. Depois removeremos seus dados do Stop Gastos.',
+      async function(){
+        updateLoading('Confirmando sua identidade…','O Google pode solicitar que você escolha sua conta novamente.');
+        await cloud.deleteCurrentAccount();
+        updateLoading('Limpando este dispositivo…','Removendo dados locais e encerrando a sessão.');
+
+        if(uidToClear) localStorage.removeItem(STATE_KEY_PREFIX+uidToClear);
+        localStorage.removeItem(VAULT_KEY);
+        localStorage.removeItem('stop_gastos_device_id_v1');
+        clearSessionCredentials();
+
+        clearFamilyWatchers();
+        cloudUser=null;
+        appState=null;
+        familyContext=null;
+        familyStates={};
+        familyInvitations=[];
+        localStateUpdatedAt='';
+      }
+    );
+
+    closeDeleteAccountDialog();
+    renderCloudUi();
+    showSignedOutScreen();
+    toast('Sua conta e seus dados foram excluídos do Stop Gastos.','success');
+  }catch(err){
+    const code=err && err.code ? err.code : '';
+    let message=err && err.message ? err.message : 'Não foi possível excluir sua conta.';
+    if(code==='auth/popup-closed-by-user'){
+      message='A confirmação do Google foi cancelada. Nenhum dado foi excluído.';
+    }else if(code==='auth/requires-recent-login'){
+      message='O Google exige uma autenticação recente. Saia, entre novamente e tente excluir a conta.';
+    }
+    toast(message,'error');
+  }
+}
+
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -147,7 +267,10 @@ function bindEvents(){
     }
   }, {passive:true});
   document.addEventListener('keydown', function(e){
-    if(e.key==='Escape') $('#sidebar').classList.remove('open');
+    if(e.key==='Escape'){
+      $('#sidebar').classList.remove('open');
+      if($('#deleteAccountBackdrop') && !$('#deleteAccountBackdrop').hidden) closeDeleteAccountDialog();
+    }
   });
   $('#themeBtn').addEventListener('click', quickToggleTheme);
   $('#quickAddBtn').addEventListener('click', function(){ openModal('transaction'); });
@@ -199,6 +322,19 @@ function bindEvents(){
   $('#restoreInput').addEventListener('change', readBackupFile);
   $('#demoBtn').addEventListener('click', loadDemoData);
   $('#wipeBtn').addEventListener('click', wipeVault);
+  $('#deleteUserAccountBtn').addEventListener('click', openDeleteAccountDialog);
+  $('#deleteAccountCancelBtn').addEventListener('click', closeDeleteAccountDialog);
+  $('#deleteAccountBackdrop').addEventListener('click', function(e){ if(e.target===e.currentTarget) closeDeleteAccountDialog(); });
+  $('#deleteAccountConfirmInput').addEventListener('input', function(e){
+    $('#deleteAccountConfirmBtn').disabled=e.target.value.trim().toUpperCase()!=='EXCLUIR';
+  });
+  $('#deleteAccountConfirmInput').addEventListener('keydown', function(e){
+    if(e.key==='Enter' && !$('#deleteAccountConfirmBtn').disabled){
+      e.preventDefault();
+      deleteUserAccountFromUi();
+    }
+  });
+  $('#deleteAccountConfirmBtn').addEventListener('click', deleteUserAccountFromUi);
   $('#exportCsvBtn').addEventListener('click', exportCsv);
 
   $('#confirmCancel').addEventListener('click', function(){ resolveConfirm(false); });
@@ -907,6 +1043,7 @@ function closeModal(){
 }
 
 async function saveTransactionForm(e){
+  return withLoading("Salvando lançamento…","Atualizando seus dados financeiros.",async function(){
   e.preventDefault();
   const id = $('#transactionId').value;
   const existing = id ? appState.transactions.find(function(t){return t.id===id;}) : null;
@@ -981,9 +1118,12 @@ async function saveTransactionForm(e){
   closeModal();
   renderAll();
   toast('Lançamento salvo.','success');
+
+  });
 }
 
 async function saveRecurringForm(e){
+  return withLoading("Salvando recorrência…","Atualizando seus custos e receitas fixas.",async function(){
   e.preventDefault();
   const id = $('#recurringId').value;
   const record = {
@@ -1008,9 +1148,12 @@ async function saveRecurringForm(e){
   closeModal();
   renderAll();
   toast(index>=0?'Recorrência atualizada.':'Recorrência criada.','success');
+
+  });
 }
 
 async function saveBudgetForm(e){
+  return withLoading("Salvando orçamento…","Atualizando o limite mensal.",async function(){
   e.preventDefault();
   const id = $('#budgetId').value;
   const category = $('#budgetCategory').value;
@@ -1025,9 +1168,12 @@ async function saveBudgetForm(e){
   closeModal();
   renderAll();
   toast('Orçamento salvo.','success');
+
+  });
 }
 
 async function saveGoalForm(e){
+  return withLoading("Salvando meta…","Atualizando seu objetivo financeiro.",async function(){
   e.preventDefault();
   const id = $('#goalId').value;
   const record = {
@@ -1046,6 +1192,8 @@ async function saveGoalForm(e){
   closeModal();
   renderAll();
   toast('Meta salva.','success');
+
+  });
 }
 
 function editTransaction(id){ const item=appState.transactions.find(function(x){return x.id===id;}); if(item) openModal('transaction',item); }
@@ -1397,6 +1545,7 @@ function handleCloudReady(){
 }
 
 async function handleCloudUser(user){
+  return withLoading("Carregando seus dados…","Sincronizando sua conta Google com este dispositivo.",async function(){
   cloudUser=user || null;
 
   if(cloudVaultUnsubscribe){
@@ -1477,9 +1626,12 @@ async function handleCloudUser(user){
       setCloudStatus('error','Não foi possível carregar o Firebase');
     }
   }
+
+  });
 }
 
 async function cloudSignIn(){
+  return withLoading("Entrando com Google…","Aguardando a autenticação segura do Google.",async function(){
   const cloud=window.StopGastosCloud;
   if(!cloud || !cloud.configured){
     toast('A integração Firebase ainda precisa receber a configuração do projeto.','info');
@@ -1497,9 +1649,12 @@ async function cloudSignIn(){
     }
     renderCloudUi();
   }
+
+  });
 }
 
 async function cloudSignOut(){
+  return withLoading("Saindo da conta…","Encerrando a sessão neste dispositivo.",async function(){
   const cloud=window.StopGastosCloud;
   if(!cloud) return;
   try{
@@ -1516,6 +1671,8 @@ async function cloudSignOut(){
   }catch(err){
     toast('Não foi possível sair da conta Google.','error');
   }
+
+  });
 }
 
 function queueCloudPush(state,immediate){
@@ -1543,6 +1700,7 @@ function queueCloudPush(state,immediate){
 }
 
 async function forceCloudSync(showToast=true){
+  return withLoading("Sincronizando…","Comparando seus dados locais com o Firebase.",async function(){
   const cloud=window.StopGastosCloud;
   if(!cloud || !cloud.configured){
     if(showToast) toast('Firebase ainda não configurado.','info');
@@ -1577,6 +1735,8 @@ async function forceCloudSync(showToast=true){
     setCloudStatus(navigator.onLine?'error':'offline',navigator.onLine?'Falha ao sincronizar':'Offline · dados salvos neste dispositivo');
     if(showToast) toast(navigator.onLine?'Não foi possível sincronizar agora.':'Sem internet. As alterações serão enviadas quando a conexão voltar.','info');
   }
+
+  });
 }
 
 async function reconcileCloudVault(remote){
@@ -1594,6 +1754,7 @@ function vaultTimestamp(value){
 }
 
 async function enableCloudNotifications(){
+  return withLoading("Ativando notificações…","Registrando este dispositivo para receber avisos.",async function(){
   const cloud=window.StopGastosCloud;
   if(!cloud || !cloud.configured){
     toast('Configure o Firebase antes de ativar notificações.','info');
@@ -1612,6 +1773,8 @@ async function enableCloudNotifications(){
   }catch(err){
     toast(err.message || 'Não foi possível ativar notificações.','error');
   }
+
+  });
 }
 
 function setCloudStatus(kind,message){
@@ -1812,6 +1975,7 @@ function rebuildFamilyStateWatchers(members,cloud){
 }
 
 async function refreshFamilyData(){
+  return withLoading("Carregando família…","Atualizando membros, convites e dados compartilhados.",async function(){
   const cloud=window.StopGastosCloud;
   if(!cloudUser || !cloud || !cloud.ready) return;
 
@@ -1876,6 +2040,8 @@ async function refreshFamilyData(){
     renderFamily();
     renderFamilyNotifications();
   }
+
+  });
 }
 
 function bindFamilyEvents(){
@@ -1920,6 +2086,7 @@ function bindFamilyEvents(){
 }
 
 async function createFamilyFromUi(){
+  return withLoading("Criando família…","Preparando sua conta de administrador.",async function(){
   const cloud=window.StopGastosCloud;
   const name=$('#familyNameInput').value.trim();
   const button=$('#createFamilyBtn');
@@ -1942,9 +2109,12 @@ async function createFamilyFromUi(){
   }finally{
     button.disabled=false;
   }
+
+  });
 }
 
 async function inviteFamilyByEmailFromUi(){
+  return withLoading("Enviando convite…","Localizando a conta e registrando a solicitação.",async function(){
   const cloud=window.StopGastosCloud;
   const input=$('#familyMemberEmailInput');
   const button=$('#inviteFamilyByEmailBtn');
@@ -1976,6 +2146,8 @@ async function inviteFamilyByEmailFromUi(){
   }finally{
     button.disabled=false;
   }
+
+  });
 }
 
 async function respondFamilyInvitationFromUi(requestId,accept){
@@ -2333,6 +2505,7 @@ function renderAccounts(){
 }
 
 async function saveAccountForm(e){
+  return withLoading("Salvando conta…","Atualizando suas contas e carteiras.",async function(){
   e.preventDefault();
   const id=$('#accountId').value;
   const record={id:id||uid('acc'),name:$('#accountName').value.trim(),type:$('#accountType').value,openingBalance:Number($('#accountOpening').value||0),icon:$('#accountIcon').value,color:$('#accountColor').value,updatedAt:new Date().toISOString()};
@@ -2341,6 +2514,8 @@ async function saveAccountForm(e){
   if(idx>=0)appState.accounts[idx]=Object.assign({},appState.accounts[idx],record);else appState.accounts.push(record);
   logAudit(idx>=0?'account-update':'account-create',record.name);
   await saveVault(); closeModal(); renderAll(); toast('Conta salva.','success');
+
+  });
 }
 async function deleteAccount(id){
   const a=getAccount(id); if(!a)return;
@@ -2379,6 +2554,7 @@ function renderCards(){
 }
 
 async function saveCardForm(e){
+  return withLoading("Salvando cartão…","Atualizando limite, fechamento e vencimento.",async function(){
   e.preventDefault();
   const id=$('#cardId').value;
   const record={id:id||uid('card'),name:$('#cardName').value.trim(),brand:$('#cardBrand').value,limit:Number($('#cardLimit').value||0),closingDay:Math.max(1,Math.min(31,Number($('#cardClosingDay').value))),dueDay:Math.max(1,Math.min(31,Number($('#cardDueDay').value))),accountId:$('#cardAccount').value||'',color:$('#cardColor').value,updatedAt:new Date().toISOString()};
@@ -2387,6 +2563,8 @@ async function saveCardForm(e){
   if(idx>=0)appState.cards[idx]=Object.assign({},appState.cards[idx],record);else appState.cards.push(record);
   logAudit(idx>=0?'card-update':'card-create',record.name);
   await saveVault(); closeModal(); renderAll(); toast('Cartão salvo.','success');
+
+  });
 }
 async function deleteCard(id){
   const c=getCard(id);if(!c)return;
@@ -2416,6 +2594,7 @@ function renderBills(){
   $('.delete-bill').forEach(function(x){x.onclick=function(){deleteBill(x.dataset.id);};});
 }
 async function saveBillForm(e){
+  return withLoading("Salvando compromisso…","Atualizando sua agenda financeira.",async function(){
   e.preventDefault();
   const id=$('#billId').value;
   const old=appState.bills.find(function(b){return b.id===id;});
@@ -2424,6 +2603,8 @@ async function saveBillForm(e){
   const idx=appState.bills.findIndex(function(b){return b.id===id;});
   if(idx>=0)appState.bills[idx]=record;else appState.bills.push(record);
   logAudit(idx>=0?'bill-update':'bill-create',record.description); await saveVault(); closeModal(); renderAll(); toast('Conta prevista salva.','success');
+
+  });
 }
 async function payBill(id){
   const b=appState.bills.find(function(x){return x.id===id;});if(!b||b.paid)return;
@@ -2438,12 +2619,15 @@ async function deleteBill(id){
 }
 
 async function saveTransferForm(e){
+  return withLoading("Registrando transferência…","Movimentando os valores entre suas contas.",async function(){
   e.preventDefault();
   const from=$('#transferFrom').value,to=$('#transferTo').value,amount=Number($('#transferAmount').value),date=$('#transferDate').value;
   if(!from||!to||from===to)return toast('Escolha contas de origem e destino diferentes.','error');
   if(!(amount>0)||!date)return toast('Informe valor e data.','error');
   const record={id:uid('trf'),fromAccountId:from,toAccountId:to,amount:amount,date:date,notes:$('#transferNotes').value.trim(),createdAt:new Date().toISOString()};
   appState.transfers.push(record);logAudit('transfer-create',(getAccount(from)?.name||'')+' → '+(getAccount(to)?.name||''));await saveVault();closeModal();renderAll();toast('Transferência registrada sem alterar receitas/despesas.','success');
+
+  });
 }
 
 function inferCategoryGroup(id){
@@ -2464,6 +2648,7 @@ function renderCategoryManager(){
   $('.delete-category').forEach(function(b){b.onclick=function(){deleteCategory(b.dataset.id);};});
 }
 async function saveCategoryForm(e){
+  return withLoading("Salvando categoria…","Atualizando a organização dos seus lançamentos.",async function(){
   e.preventDefault();
   const id=$('#categoryId').value;
   const name=$('#categoryName').value.trim();
@@ -2472,6 +2657,8 @@ async function saveCategoryForm(e){
   const idx=appState.categories.findIndex(function(c){return c.id===id;});
   if(idx>=0)appState.categories[idx]=Object.assign({},appState.categories[idx],record);else appState.categories.push(record);
   logAudit(idx>=0?'category-update':'category-create',record.name);await saveVault();closeModal();renderAll();toast('Categoria salva.','success');
+
+  });
 }
 async function deleteCategory(id){
   const c=appState.categories.find(function(x){return x.id===id;});if(!c)return;

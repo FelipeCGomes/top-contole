@@ -2044,12 +2044,12 @@ function renderFamilyNotifications(){
     const family=invite.familyName || 'Família';
     return '<div class="family-notification-card">'+
       '<div class="family-notification-icon">✦</div>'+
-      '<div class="family-notification-copy"><b>'+escapeHtml(family)+'</b>'+
-      '<span>'+escapeHtml(inviter)+' convidou você para fazer parte da família.</span>'+
+      '<div class="family-notification-copy"><b>'+esc(family)+'</b>'+
+      '<span>'+esc(inviter)+' convidou você para fazer parte da família.</span>'+
       '<small>Ao aceitar, o administrador poderá visualizar seus lançamentos financeiros.</small></div>'+
       '<div class="family-notification-actions">'+
-        '<button class="btn primary mini" data-family-response="accept" data-request-id="'+escapeHtml(invite.id)+'">Aceitar</button>'+
-        '<button class="btn soft mini" data-family-response="decline" data-request-id="'+escapeHtml(invite.id)+'">Recusar</button>'+
+        '<button class="btn primary mini" data-family-response="accept" data-request-id="'+esc(invite.id)+'">Aceitar</button>'+
+        '<button class="btn soft mini" data-family-response="decline" data-request-id="'+esc(invite.id)+'">Recusar</button>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -2177,23 +2177,23 @@ function renderFamily(){
         : '';
 
     return '<div class="family-member-row '+statusClass+'">'+
-      '<div class="family-mini-avatar">'+escapeHtml(initial)+'</div>'+
-      '<div class="family-member-info"><b>'+escapeHtml(member.displayName || member.email || 'Membro')+'</b>'+
-      '<small>'+escapeHtml(member.email || '')+(isSelf?' · você':'')+responseText+'</small></div>'+
+      '<div class="family-mini-avatar">'+esc(initial)+'</div>'+
+      '<div class="family-member-info"><b>'+esc(member.displayName || member.email || 'Membro')+'</b>'+
+      '<small>'+esc(member.email || '')+(isSelf?' · você':'')+responseText+'</small></div>'+
       '<span class="member-status '+statusClass+'">'+statusLabel+'</span>'+
-      (canRemove?'<button class="row-btn member-remove" data-remove-member="'+escapeHtml(member.uid)+'" title="Remover vínculo">×</button>':'')+
+      (canRemove?'<button class="row-btn member-remove" data-remove-member="'+esc(member.uid)+'" title="Remover vínculo">×</button>':'')+
     '</div>';
   }).join('') || '<div class="empty-state">Nenhum membro vinculado.</div>';
 
   if(isAdmin){
     $('#familyMemberTotals').innerHTML=memberTotals.sort((a,b)=>b.expense-a.expense).map(function(item){
       const pct=totalExpense>0 ? Math.round(item.expense/totalExpense*100) : 0;
-      return '<div class="family-total-row"><div><b>'+escapeHtml(item.member.displayName || item.member.email || 'Membro')+'</b><small>'+pct+'% dos gastos do mês</small></div><strong>'+money(item.expense)+'</strong></div>';
+      return '<div class="family-total-row"><div><b>'+esc(item.member.displayName || item.member.email || 'Membro')+'</b><small>'+pct+'% dos gastos do mês</small></div><strong>'+money(item.expense)+'</strong></div>';
     }).join('') || '<div class="empty-state">Sem gastos familiares neste mês.</div>';
 
     recent.sort((a,b)=>String(b.t.date||'').localeCompare(String(a.t.date||'')));
     $('#familyRecentTransactions').innerHTML=recent.slice(0,40).map(function(item){
-      return '<tr><td>'+formatDate(item.t.date)+'</td><td>'+escapeHtml(item.member.displayName || item.member.email || 'Membro')+'</td><td>'+escapeHtml(item.t.description || '')+'</td><td>'+escapeHtml(getCategoryFromState(item.t.category,item.member.uid).name)+'</td><td class="right '+(item.t.type==='expense'?'expense-text':'income-text')+'">'+(item.t.type==='expense'?'- ':'+ ')+money(item.t.amount)+'</td></tr>';
+      return '<tr><td>'+formatDate(item.t.date)+'</td><td>'+esc(item.member.displayName || item.member.email || 'Membro')+'</td><td>'+esc(item.t.description || '')+'</td><td>'+esc(getCategoryFromState(item.t.category,item.member.uid).name)+'</td><td class="right '+(item.t.type==='expense'?'expense-text':'income-text')+'">'+(item.t.type==='expense'?'- ':'+ ')+money(item.t.amount)+'</td></tr>';
     }).join('') || '<tr><td colspan="5" class="empty-cell">Nenhum lançamento da família neste mês.</td></tr>';
   }
 

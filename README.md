@@ -186,3 +186,13 @@ O projeto inclui workflow em `.github/workflows/pages.yml` para publicação aut
 - `FIREBASE_SETUP.md`: configuração do Firebase Console
 - `service-worker.js`: PWA, cache e preparação para FCM
 - `manifest.webmanifest`: manifesto PWA
+
+### Parcelamento
+- Lançamentos em cartão de crédito aceitam compra à vista ou parcelada
+- Ao editar uma compra, alterar de 1x para 3x, 5x etc. recria o grupo completo de parcelas
+- Reduzir o parcelamento também remove parcelas excedentes
+- Cada parcela é posicionada na fatura correta conforme fechamento e vencimento do cartão
+- Custos fixos pagos com cartão de crédito também possuem quantidade de parcelas
+- Um lançamento automático originado de custo fixo mantém o parcelamento alinhado com sua recorrência
+- Excluir uma compra parcelada remove o grupo completo de parcelas
+

@@ -3017,7 +3017,7 @@ async function handleCloudUser(user){
         appState=migrated;
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+delayMs;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
         writeLocalState();
         local=readLocalState();
         toast('Dados antigos encontrados. Migração para o Firestore será feita automaticamente.','info');
@@ -3033,7 +3033,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+delayMs;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
         writeLocalState();
       }
 
@@ -3051,7 +3051,7 @@ async function handleCloudUser(user){
           console.error('Stop Gastos modular Firestore migration:',migrationError);
           cloudSyncedState=null;
           cloudSyncPending=true;
-          cloudSyncDueAt=Date.now()+delayMs;
+          cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
           writeLocalState();
         }
       }
@@ -3096,7 +3096,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=local.clientUpdatedAt || '';
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+delayMs;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
         writeLocalState();
         openApp();
         setCloudStatus(
@@ -3110,7 +3110,7 @@ async function handleCloudUser(user){
         localStateUpdatedAt=new Date().toISOString();
         cloudSyncedState=null;
         cloudSyncPending=true;
-        cloudSyncDueAt=Date.now()+delayMs;
+        cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
         writeLocalState();
         openApp();
         setCloudStatus('error','Firestore indisponível · alteração ficará pendente');
@@ -3696,7 +3696,7 @@ function markCloudSynced(state,clientUpdatedAt){
 
 function markCloudPending(){
   cloudSyncPending=true;
-  cloudSyncDueAt=Date.now()+delayMs;
+  cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
   writeLocalState();
 }
 
@@ -3714,7 +3714,7 @@ function applyBestState(local,remote){
       appState=normalizeState(local.state);
       localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
       cloudSyncPending=true;
-      cloudSyncDueAt=Date.now()+delayMs;
+      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
       writeLocalState();
       return 'local-pending';
     }
@@ -3732,7 +3732,7 @@ function applyBestState(local,remote){
     localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
     cloudSyncedState=null;
     cloudSyncPending=true;
-    cloudSyncDueAt=Date.now()+delayMs;
+    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
     writeLocalState();
     return 'local-pending';
   }

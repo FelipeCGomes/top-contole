@@ -502,7 +502,7 @@ function bindEvents(){
   document.addEventListener('pointerdown', function(e){
     const sidebar=$('#sidebar');
     const menu=$('#menuBtn');
-    if(window.innerWidth<=860 && sidebar.classList.contains('open') && !sidebar.contains(e.target) && !menu.contains(e.target)){
+    if(window.innerWidth<=900 && sidebar.classList.contains('open') && !sidebar.contains(e.target) && !menu.contains(e.target)){
       sidebar.classList.remove('open');
     }
   }, {passive:true});

@@ -287,6 +287,8 @@ jobs:
             ['modular data collection exists', /users',uid,'data/.test(sync)],
             ['pushState writes changed sections', /options\.sections/.test(sync) && /batch\.set\(dataSectionRef\(section\)/.test(sync)],
             ['server-only verification exists', /pullStateFromServer/.test(sync) && /getDocsFromServer/.test(sync)],
+            ['server confirms modular writes', /function\s+verifyModularWrite\s*\(/.test(sync) && /getDocFromServer\(dataSectionRef/.test(sync)],
+            ['server confirms legacy fallback writes', /function\s+verifyLegacyWrite\s*\(/.test(sync) && /serverConfirmed:true/.test(sync)],
             ['legacy fallback remains available', /pushLegacyState/.test(sync) && /fallbackLegacy/.test(sync)],
             ['family state reads modular adapter', /states\[member\.uid\]=await pullState\(member\.uid\)/.test(sync)],
             ['account cleanup removes modular data', /collection\(db,'users',uid,'data'\)/.test(sync)],
@@ -346,10 +348,10 @@ jobs:
             ['settings persistence status renderer exists', /function\s+renderSettingsPersistenceStatus\s*\(/.test(app)],
             ['sidebar JS matches 900px CSS breakpoint', /window\.innerWidth<=900/.test(app)],
             ['tablet dashboard keeps six-column grid', /@media\(max-width:900px\)[\s\S]*?\.dashboard-optimized\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}/.test(css)],
-            ['settings use adaptive auto-fit grid', /\.settings-grid\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,340px\),1fr\)\)/.test(css)],
-            ['settings cards can wrap their controls', /\.settings-card\{[\s\S]*?flex-wrap:wrap/.test(css)],
-            ['tablet settings remain adaptive', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,320px\),1fr\)\)/.test(css)],
-            ['mobile settings collapse to one column', /@media\(max-width:640px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
+            ['settings use adaptive desktop grid', /\.settings-grid\{[\s\S]*?repeat\(auto-fit,minmax\(min\(100%,340px\),1fr\)\)/.test(css)],
+            ['settings cards use stable internal grid', /\.settings-card\{[\s\S]*?grid-template-columns:minmax\(0,1fr\) minmax\(180px,260px\)/.test(css)],
+            ['tablet settings collapse sections to one column', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
+            ['mobile settings cards stack internally', /@media\(max-width:640px\)[\s\S]*?\.settings-card\{[\s\S]*?grid-template-columns:1fr/.test(css)],
             ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:700px\}/.test(css)]
           ];
 

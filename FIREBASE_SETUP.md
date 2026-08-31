@@ -70,6 +70,7 @@ Seções atuais:
 - `categories`
 - `transactions`
 - `recurring`
+- `incomeSources`
 - `shoppingLists`
 - `shoppingActiveListId`
 - `budgets`
@@ -84,6 +85,14 @@ Seções atuais:
 O aplicativo grava apenas as seções que mudaram.
 
 O caminho `users/{uid}/state/main` é legado. Se as novas regras ainda não estiverem publicadas, o app pode usá-lo temporariamente como fallback para não perder dados. Depois da publicação das regras modulares, a migração acontece automaticamente.
+
+### Separação entre custos, rendas e benefícios
+
+- **Custos fixos** armazena somente despesas recorrentes em `recurring`.
+- **Configurações > Rendas** armazena salário, renda extra, freelance, aluguel recebido, comissão e outras rendas recorrentes em `incomeSources`.
+- As rendas ativas geram lançamentos mensais de receita em `transactions`.
+- **Vale-refeição, vale-alimentação e vale-combustível não são tratados como renda em dinheiro**; são cadastrados em `cards` como cartões/benefícios.
+- Dados antigos de renda que estavam em `recurring` são migrados para `incomeSources` automaticamente.
 
 ### Diagnóstico
 
@@ -162,9 +171,10 @@ O cofre antigo não é apagado automaticamente.
 | Lançamentos | `users/{uid}/data/transactions` |
 | Família | `families/{familyId}`, `families/{familyId}/members/{uid}`, `familyRequests/{requestId}` e perfil do usuário |
 | Contas | `users/{uid}/data/accounts` |
-| Cartões | `users/{uid}/data/cards` |
+| Cartões e benefícios | `users/{uid}/data/cards`; inclui crédito, vale-refeição, vale-alimentação, vale-combustível e outros benefícios |
 | Contas a pagar/receber | `users/{uid}/data/bills`; ao pagar, também altera `transactions` |
-| Custos fixos | `users/{uid}/data/recurring`; lançamentos automáticos também entram em `transactions` |
+| Custos fixos | `users/{uid}/data/recurring`; somente despesas recorrentes; lançamentos automáticos também entram em `transactions` |
+| Rendas recorrentes | `users/{uid}/data/incomeSources`; salário, renda extra, freelance e outras entradas mensais; lançamentos automáticos entram em `transactions` |
 | Lista de compras pessoal | `users/{uid}/data/shoppingLists` e `shoppingActiveListId` |
 | Lista de compras familiar | `families/{familyId}/shoppingLists/{listId}` e `items/{itemId}` |
 | Orçamentos por categoria | `users/{uid}/data/budgets` |

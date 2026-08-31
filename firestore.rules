@@ -47,6 +47,11 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(userId)/profile/main)
         && profileOf(userId).familyId is string
         && profileOf(userId).familyId.size() > 0
+        && exists(memberPath(profileOf(userId).familyId, userId))
+        && (
+          !('status' in get(memberPath(profileOf(userId).familyId, userId)).data)
+          || get(memberPath(profileOf(userId).familyId, userId)).data.status == 'active'
+        )
         && adminOf(profileOf(userId).familyId);
     }
 

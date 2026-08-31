@@ -47,6 +47,16 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Sino de notificações com badge no topo do aplicativo
 
 
+## Lista de compras
+
+- Múltiplas listas com nome e mercado/local opcional
+- Cadastro de produto, quantidade e valor unitário
+- Edição direta dos preços durante a compra
+- Cálculo automático de valor total por linha
+- Cards com produtos, quantidade de itens, valor médio por item precificado e valor total
+- Salvamento local imediato e sincronização automática com Firebase
+- Layout responsivo otimizado para uso no celular dentro do mercado
+
 ## Experiência e conta
 
 - Loader global com spinner e mensagens contextuais para autenticação, sincronização, Família e salvamentos importantes

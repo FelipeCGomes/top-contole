@@ -269,6 +269,40 @@ jobs:
           console.log('Shopping market comparison OK');
           NODE
 
+      - name: Validate Firestore persistence architecture
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const sync = fs.readFileSync('firebase-sync.js','utf8');
+          const rules = fs.readFileSync('firestore.rules','utf8');
+
+          const checks = [
+            ['10 second debounce', /const CLOUD_SYNC_DELAY_MS = 10000;/.test(app)],
+            ['no normal immediate saveVault calls', !/saveVault\(true\)/.test(app)],
+            ['online reconnect does not force full sync', !/window\.addEventListener\('online'[\s\S]{0,350}forceCloudSync/.test(app)],
+            ['changed sections are computed', /function\s+changedStateSections\s*\(/.test(app)],
+            ['pending state persisted locally', /syncPending:cloudSyncPending===true/.test(app)],
+            ['modular section list exists in Firebase adapter', /const STATE_SECTIONS = \[/.test(sync)],
+            ['modular data collection exists', /users',uid,'data/.test(sync)],
+            ['pushState writes changed sections', /options\.sections/.test(sync) && /batch\.set\(dataSectionRef\(section\)/.test(sync)],
+            ['server-only verification exists', /pullStateFromServer/.test(sync) && /getDocsFromServer/.test(sync)],
+            ['legacy fallback remains available', /pushLegacyState/.test(sync) && /fallbackLegacy/.test(sync)],
+            ['family state reads modular adapter', /states\[member\.uid\]=await pullState\(member\.uid\)/.test(sync)],
+            ['account cleanup removes modular data', /collection\(db,'users',uid,'data'\)/.test(sync)],
+            ['rules permit modular data', /match \/users\/\{userId\}\/data\/\{sectionId\}/.test(rules)],
+            ['shared shopping uses 10 second delay', /function\s+scheduleShoppingAutosave[\s\S]{0,2200}CLOUD_SYNC_DELAY_MS/.test(app)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Firestore persistence architecture failed:', failed);
+            process.exit(1);
+          }
+
+          console.log('Firestore persistence architecture OK');
+          NODE
+
       - name: Validate save workflow
         run: |
           node - <<'NODE'

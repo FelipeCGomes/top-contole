@@ -3374,17 +3374,56 @@ function renderCloudUi(){
 }
 
 
+
 function currentStateKey(){
   return cloudUser ? STATE_KEY_PREFIX + cloudUser.uid : '';
+}
+
+function stateTime(value){
+  const time=Date.parse(value || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function stateSectionValue(state,key){
+  return state ? state[key] : undefined;
+}
+
+function sectionFingerprint(state,key){
+  try{
+    return JSON.stringify(stateSectionValue(state,key));
+  }catch(err){
+    return '';
+  }
+}
+
+function changedStateSections(state,baseline=cloudSyncedState){
+  if(!state) return [];
+
+  if(!baseline){
+    return STATE_SECTION_KEYS.filter(function(key){
+      return Object.prototype.hasOwnProperty.call(state,key);
+    });
+  }
+
+  return STATE_SECTION_KEYS.filter(function(key){
+    return sectionFingerprint(state,key)!==sectionFingerprint(baseline,key);
+  });
 }
 
 function readLocalState(){
   const key=currentStateKey();
   if(!key) return null;
+
   try{
     const wrapper=JSON.parse(localStorage.getItem(key) || 'null');
     if(!wrapper || !wrapper.state) return null;
-    return {state:normalizeState(wrapper.state),clientUpdatedAt:wrapper.clientUpdatedAt || ''};
+
+    return {
+      state:normalizeState(wrapper.state),
+      clientUpdatedAt:wrapper.clientUpdatedAt || '',
+      syncPending:wrapper.syncPending===true,
+      syncDueAt:Number(wrapper.syncDueAt || 0)
+    };
   }catch(err){
     return null;
   }
@@ -3393,58 +3432,106 @@ function readLocalState(){
 function writeLocalState(){
   const key=currentStateKey();
   if(!key || !appState) return;
+
   localStorage.setItem(key,JSON.stringify({
     app:'stop-gastos',
     version:APP_VERSION,
     clientUpdatedAt:localStateUpdatedAt || new Date().toISOString(),
+    syncPending:cloudSyncPending===true,
+    syncDueAt:cloudSyncDueAt || 0,
     state:appState
   }));
 }
 
-function stateTime(value){
-  const time=Date.parse(value || '');
-  return Number.isFinite(time) ? time : 0;
+function markCloudSynced(state,clientUpdatedAt){
+  cloudSyncedState=clone(state || appState || makeInitialState());
+  cloudSyncPending=false;
+  cloudSyncDueAt=0;
+  if(clientUpdatedAt) localStateUpdatedAt=clientUpdatedAt;
+  writeLocalState();
+}
+
+function markCloudPending(){
+  cloudSyncPending=true;
+  cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+  writeLocalState();
 }
 
 function applyBestState(local,remote){
-  const localTime=local ? stateTime(local.clientUpdatedAt) : 0;
-  const remoteTime=remote ? stateTime(remote.clientUpdatedAt) : 0;
+  if(remote && remote.state){
+    cloudSyncedState=clone(normalizeState(remote.state));
 
-  if(remote && remote.state && remoteTime>localTime){
+    const keepLocal=!!(
+      local?.state
+      && local.syncPending
+      && stateTime(local.clientUpdatedAt)>stateTime(remote.clientUpdatedAt)
+    );
+
+    if(keepLocal){
+      appState=normalizeState(local.state);
+      localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
+      cloudSyncPending=true;
+      cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
+      writeLocalState();
+      return 'local-pending';
+    }
+
     appState=normalizeState(remote.state);
     localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+    cloudSyncPending=false;
+    cloudSyncDueAt=0;
     writeLocalState();
-    return 'remote';
+    return remote.legacy ? 'remote-legacy' : 'remote';
   }
+
   if(local && local.state){
     appState=normalizeState(local.state);
     localStateUpdatedAt=local.clientUpdatedAt || new Date().toISOString();
-    return 'local';
-  }
-  if(remote && remote.state){
-    appState=normalizeState(remote.state);
-    localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+    cloudSyncedState=null;
+    cloudSyncPending=true;
+    cloudSyncDueAt=Date.now()+CLOUD_SYNC_DELAY_MS;
     writeLocalState();
-    return 'remote';
+    return 'local-pending';
   }
+
+  cloudSyncedState=null;
+  cloudSyncPending=false;
+  cloudSyncDueAt=0;
   return 'empty';
 }
 
 async function reconcileCloudState(remote){
   if(!remote || !remote.state || !cloudUser) return;
+
+  if(remote.hasPendingWrites) return;
+
+  if(cloudSyncPending){
+    // Existe alteração local ainda não enviada. Não sobrescreve o usuário
+    // enquanto o debounce de 10 segundos estiver em andamento.
+    return;
+  }
+
   const remoteTime=stateTime(remote.clientUpdatedAt);
   const localTime=stateTime(localStateUpdatedAt);
-  if(remoteTime<=localTime) return;
+  if(remoteTime<=localTime && cloudSyncedState) return;
 
   appState=normalizeState(remote.state);
+  cloudSyncedState=clone(appState);
   localStateUpdatedAt=remote.clientUpdatedAt || new Date().toISOString();
+  cloudSyncPending=false;
+  cloudSyncDueAt=0;
   writeLocalState();
   renderAll();
 
-  if(familyStates) familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt:localStateUpdatedAt};
+  if(familyStates){
+    familyStates[cloudUser.uid]={
+      state:clone(appState),
+      clientUpdatedAt:localStateUpdatedAt
+    };
+  }
   renderFamily();
 
-  if(!remote.hasPendingWrites) toast('Alterações de outro dispositivo foram atualizadas.','info');
+  toast('Alterações de outro dispositivo foram atualizadas.','info');
 }
 
 async function tryMigrateLegacyState(){

@@ -138,6 +138,15 @@ img,svg{display:block}
 .btn.wide{width:100%}
 .btn.mini{min-height:32px;padding:6px 10px;font-size:10px}
 .btn-icon{flex:0 0 auto}
+.button-spinner{
+  width:15px;
+  height:15px;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  animation:loadingSpin .7s linear infinite;
+  flex:0 0 auto;
+}
 
 .icon-btn{
   width:40px;

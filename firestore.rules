@@ -80,8 +80,19 @@ service cloud.firestore {
           resource.data.familyId is string
           && resource.data.familyId.size() > 0
           && adminOf(resource.data.familyId)
-          && request.resource.data.familyId == ''
-          && request.resource.data.role == ''
+          && (
+            (
+              request.resource.data.familyId == ''
+              && request.resource.data.role == ''
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['familyId', 'role', 'updatedAt'])
+            )
+            ||
+            (
+              request.resource.data.familyId == resource.data.familyId
+              && request.resource.data.role in ['member', 'admin']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+            )
+          )
         )
       );
 

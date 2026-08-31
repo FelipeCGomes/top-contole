@@ -153,3 +153,28 @@ Nunca coloque service account, private key ou credencial administrativa no front
 O aplicativo mantém uma tentativa de migração do antigo cofre AES-GCM caso a chave temporária da versão anterior ainda exista no mesmo navegador.
 
 O cofre antigo não é apagado automaticamente.
+
+
+## Mapa das telas para o Firestore
+
+| Tela / recurso | Caminho principal |
+| --- | --- |
+| Lançamentos | `users/{uid}/data/transactions` |
+| Família | `families/{familyId}`, `families/{familyId}/members/{uid}`, `familyRequests/{requestId}` e perfil do usuário |
+| Contas | `users/{uid}/data/accounts` |
+| Cartões | `users/{uid}/data/cards` |
+| Contas a pagar/receber | `users/{uid}/data/bills`; ao pagar, também altera `transactions` |
+| Custos fixos | `users/{uid}/data/recurring`; lançamentos automáticos também entram em `transactions` |
+| Lista de compras pessoal | `users/{uid}/data/shoppingLists` e `shoppingActiveListId` |
+| Lista de compras familiar | `families/{familyId}/shoppingLists/{listId}` e `items/{itemId}` |
+| Orçamentos por categoria | `users/{uid}/data/budgets` |
+| Limite mensal geral | `users/{uid}/data/settings` → `value.monthlyBudget` |
+| Metas | `users/{uid}/data/goals` |
+| Categorias personalizadas | `users/{uid}/data/categories` |
+| Transferências | `users/{uid}/data/transfers` |
+| Auditoria local do app | `users/{uid}/data/audit` |
+| Calendário | não possui documento próprio; é calculado a partir de `transactions` e `bills` |
+| Relatórios | não possui documento próprio; é calculado a partir dos módulos financeiros |
+| Configurações | `users/{uid}/data/settings` |
+
+O documento `users/{uid}/data/_meta` guarda versão do schema, horário e dispositivo da última sincronização.

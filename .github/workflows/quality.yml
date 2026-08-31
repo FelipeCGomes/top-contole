@@ -329,6 +329,36 @@ jobs:
           console.log('Save workflow OK:', names.length, 'forms');
           NODE
 
+      - name: Validate settings persistence and responsive layout
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+          const css = fs.readFileSync('styles.css','utf8');
+
+          const checks = [
+            ['monthly budget uses input event', /monthlyBudgetInput'\)\.addEventListener\('input',\s*handleMonthlyBudgetInput\)/.test(app)],
+            ['monthly budget no longer depends on change', !/monthlyBudgetInput'\)\.addEventListener\('change'/.test(app)],
+            ['monthly budget saves settings', /function\s+handleMonthlyBudgetInput[\s\S]{0,1200}appState\.settings\.monthlyBudget[\s\S]{0,1200}saveVault\(false\)/.test(app)],
+            ['monthly budget status exists', html.includes('id="monthlyBudgetSaveStatus"')],
+            ['Firestore data path exists', html.includes('id="cloudDataPath"')],
+            ['settings persistence status renderer exists', /function\s+renderSettingsPersistenceStatus\s*\(/.test(app)],
+            ['sidebar JS matches 900px CSS breakpoint', /window\.innerWidth<=900/.test(app)],
+            ['tablet dashboard keeps six-column grid', /@media\(max-width:900px\)[\s\S]*?\.dashboard-optimized\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}/.test(css)],
+            ['tablet settings keep two columns', /@media\(max-width:900px\)[\s\S]*?settings-grid[\s\S]*?repeat\(2,minmax\(0,1fr\)\)/.test(css)],
+            ['mobile settings collapse to one column', /@media\(max-width:640px\)[\s\S]*?settings-grid[\s\S]*?grid-template-columns:1fr/.test(css)],
+            ['mobile calendar remains readable', /@media\(max-width:640px\)[\s\S]*?calendar-weekdays,.calendar-grid\{min-width:700px\}/.test(css)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Settings/responsive validation failed:', failed);
+            process.exit(1);
+          }
+          console.log('Settings persistence and responsive layout OK');
+          NODE
+
       - name: Validate CSS structure
         run: |
           node - <<'NODE'

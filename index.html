@@ -31,6 +31,7 @@
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-shopping" viewBox="0 0 24 24"><path d="M4 5h2l1.5 9h9.8l2-6H7.2"/><circle cx="10" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/><path d="M9 8h8"/></symbol>
   </svg>
   <div id="lockScreen" class="lock-screen">
     <div class="lock-visual" aria-hidden="true">
@@ -72,6 +73,7 @@
         <button class="nav-item" data-nav="cards"><svg class="nav-icon"><use href="#i-card"/></svg><b>Cartões</b></button>
         <button class="nav-item" data-nav="bills"><svg class="nav-icon"><use href="#i-bill"/></svg><b>Contas a pagar</b></button>
         <button class="nav-item" data-nav="recurring"><svg class="nav-icon"><use href="#i-repeat"/></svg><b>Custos fixos</b></button>
+        <button class="nav-item" data-nav="shopping"><svg class="nav-icon"><use href="#i-shopping"/></svg><b>Lista de compras</b></button>
         <button class="nav-item" data-nav="budgets"><svg class="nav-icon"><use href="#i-target"/></svg><b>Orçamentos</b></button>
         <button class="nav-item" data-nav="goals"><svg class="nav-icon"><use href="#i-target"/></svg><b>Metas</b></button>
         <button class="nav-item" data-nav="calendar"><svg class="nav-icon"><use href="#i-calendar"/></svg><b>Calendário</b></button>
@@ -303,6 +305,72 @@
         </div>
         <div id="recurringGrid" class="card-grid"></div>
         <div id="recurringEmpty" class="empty-block panel" hidden><div>↻</div><h3>Nenhum item recorrente</h3><p>Cadastre aluguel, internet, assinaturas, salário e outras cobranças fixas.</p></div>
+      </section>
+
+      <section id="view-shopping" class="view">
+        <div class="section-toolbar shopping-toolbar">
+          <div>
+            <span class="eyebrow">COMPRAS</span>
+            <h3>Lista de compras</h3>
+            <p class="muted">Planeje quantidades antes de sair e informe os preços no mercado para acompanhar o total em tempo real.</p>
+          </div>
+          <div class="shopping-toolbar-actions">
+            <select id="shoppingListSelect" aria-label="Selecionar lista de compras"></select>
+            <button id="deleteShoppingListBtn" class="btn soft" type="button" hidden>Excluir lista</button>
+            <button class="btn primary" type="button" data-open="shoppingList">＋ Nova lista</button>
+          </div>
+        </div>
+
+        <div class="summary-chips shopping-summary">
+          <div><span>Produtos</span><strong id="shoppingProductCount">0</strong><small>linhas cadastradas</small></div>
+          <div><span>Qtd. de itens</span><strong id="shoppingItemCount">0</strong><small>soma das quantidades</small></div>
+          <div><span>Valor médio</span><strong id="shoppingAverage">R$ 0,00</strong><small>por item com preço</small></div>
+          <div><span>Valor total</span><strong id="shoppingTotal">R$ 0,00</strong><small>estimativa atual da compra</small></div>
+        </div>
+
+        <article class="panel shopping-panel">
+          <div class="panel-head shopping-panel-head">
+            <div>
+              <span class="eyebrow">LISTA ATIVA</span>
+              <h3 id="shoppingListTitle">Nenhuma lista selecionada</h3>
+              <p id="shoppingListMeta" class="muted">Crie uma lista para começar.</p>
+            </div>
+            <div class="shopping-save-state">
+              <span id="shoppingPriceProgress" class="soft-badge">0/0 com preço</span>
+              <span id="shoppingAutosaveStatus" class="shopping-autosave">Salvamento automático</span>
+            </div>
+          </div>
+
+          <form id="shoppingItemForm" class="shopping-add-row">
+            <label class="field shopping-product-field">Produto
+              <input id="shoppingItemProduct" maxlength="80" placeholder="Ex.: Arroz" autocomplete="off" />
+            </label>
+            <label class="field">Qtd.
+              <input id="shoppingItemQty" type="number" min="0.001" step="0.001" value="1" />
+            </label>
+            <label class="field">Valor unit.
+              <div class="money-input shopping-money-input"><span>R$</span><input id="shoppingItemUnit" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+            </label>
+            <button id="addShoppingItemBtn" class="btn primary" type="submit">＋ Adicionar</button>
+          </form>
+
+          <div id="shoppingNoList" class="empty-block shopping-empty">
+            <div>🛒</div>
+            <h3>Crie sua primeira lista</h3>
+            <p>Cadastre os produtos e quantidades em casa. No mercado, preencha os preços para acompanhar o valor da compra.</p>
+            <button class="btn primary" type="button" data-open="shoppingList">＋ Criar lista</button>
+          </div>
+
+          <div id="shoppingGridWrap" class="shopping-grid-wrap" hidden>
+            <div class="shopping-grid-head" aria-hidden="true">
+              <span>Ord</span><span>Produto</span><span>Qtd</span><span>Valor Unit.</span><span>Valor Total</span><span></span>
+            </div>
+            <div id="shoppingGridBody" class="shopping-grid-body"></div>
+            <div id="shoppingItemsEmpty" class="empty-block shopping-items-empty" hidden>
+              <div>＋</div><h3>Lista vazia</h3><p>Adicione o primeiro produto acima.</p>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section id="view-budgets" class="view">
@@ -644,7 +712,7 @@
       <button data-nav="transactions"><svg class="mobile-icon"><use href="#i-transactions"/></svg><small>Gastos</small></button>
       <button class="mobile-add" data-open="transaction" aria-label="Novo lançamento"><svg class="mobile-plus"><use href="#i-plus"/></svg></button>
       <button data-nav="family"><svg class="mobile-icon"><use href="#i-users"/></svg><small>Família</small></button>
-      <button data-nav="reports"><svg class="mobile-icon"><use href="#i-chart"/></svg><small>Relatórios</small></button>
+      <button data-nav="shopping"><svg class="mobile-icon"><use href="#i-shopping"/></svg><small>Compras</small></button>
     </nav>
   </div>
 
@@ -712,6 +780,19 @@
         <label class="field">Prazo<input id="goalDeadline" type="date" /></label>
         <label class="field">Ícone<select id="goalIcon"><option>🎯</option><option>🛟</option><option>✈️</option><option>🏠</option><option>🚗</option><option>💻</option><option>📚</option><option>💰</option></select></label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar meta</button></div>
+      </form>
+
+      <form id="shoppingListForm" class="modal-form" hidden>
+        <label class="field span-2">Nome da lista
+          <input id="shoppingListName" required maxlength="70" placeholder="Ex.: Compras do mês" />
+        </label>
+        <label class="field span-2">Mercado / local <span class="muted">(opcional)</span>
+          <input id="shoppingListStore" maxlength="70" placeholder="Ex.: Atacadão" />
+        </label>
+        <div class="modal-actions span-2">
+          <button type="button" class="btn soft modal-cancel">Cancelar</button>
+          <button class="btn primary" type="submit">Criar lista</button>
+        </div>
       </form>
 
       <form id="accountForm" class="modal-form" hidden>

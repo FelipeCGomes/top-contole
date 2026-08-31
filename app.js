@@ -473,6 +473,32 @@ function makeInitialState(){
   };
 }
 
+function normalizeIncomeSources(data){
+  const current=Array.isArray(data && data.incomeSources) ? data.incomeSources : [];
+  const legacy=Array.isArray(data && data.recurring)
+    ? data.recurring.filter(function(item){return item && item.type==='income';}).map(function(item){
+        return {
+          id:item.id || uid('inc'),
+          kind:item.incomeKind || 'salary',
+          description:item.description || 'Renda recorrente',
+          amount:Number(item.amount || 0),
+          day:Math.max(1,Math.min(31,Number(item.day || 1))),
+          accountId:item.accountId || '',
+          active:item.active!==false,
+          createdAt:item.createdAt || item.updatedAt || new Date().toISOString(),
+          updatedAt:item.updatedAt || new Date().toISOString(),
+          migratedFromRecurring:true
+        };
+      })
+    : [];
+
+  const map=new Map();
+  current.concat(legacy).forEach(function(item){
+    if(item && item.id) map.set(item.id,Object.assign({},item));
+  });
+  return Array.from(map.values());
+}
+
 function normalizeState(data){
   const base = makeInitialState();
   if(!data || typeof data !== 'object') return base;
@@ -481,7 +507,8 @@ function normalizeState(data){
     createdAt:data.createdAt || base.createdAt,
     categories:Array.isArray(data.categories) && data.categories.length ? data.categories : base.categories,
     transactions:Array.isArray(data.transactions) ? data.transactions : [],
-    recurring:Array.isArray(data.recurring) ? data.recurring : [],
+    recurring:Array.isArray(data.recurring) ? data.recurring.filter(function(item){return item && item.type!=='income';}).map(function(item){return Object.assign({},item,{type:'expense'});}) : [],
+    incomeSources:normalizeIncomeSources(data),
     shoppingLists:Array.isArray(data.shoppingLists) ? data.shoppingLists.map(function(list){
       return Object.assign({},list,{
         items:Array.isArray(list && list.items) ? list.items : []

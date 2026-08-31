@@ -157,7 +157,14 @@ async function setup(){
     onAuthStateChanged(auth,async user=>{
       currentUser=user || null;
       if(currentUser){
-        try{ await ensureOwnProfile(); }catch(err){}
+        try{
+          await ensureOwnProfile();
+        }catch(err){
+          console.error('Stop Gastos profile initialization:',err);
+          globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
+            detail:{message:'Falha ao preparar o perfil no Firestore: '+(err.message || err)}
+          }));
+        }
       }
       authObservers.forEach(fn=>{
         try{ fn(publicUser(currentUser)); }catch(err){}
@@ -410,7 +417,14 @@ async function pullModularState(uid=currentUser?.uid,serverOnly=false){
   requireUser();
   const ref=dataCollectionRef(uid);
   const snapshots=serverOnly ? await getDocsFromServer(ref) : await getDocs(ref);
-  return buildStateFromDataDocs(snapshots.docs);
+  const result=buildStateFromDataDocs(snapshots.docs);
+
+  if(result){
+    result.fromCache=!!snapshots.metadata?.fromCache;
+    result.hasPendingWrites=snapshots.docs.some(docSnap=>!!docSnap.metadata?.hasPendingWrites);
+  }
+
+  return result;
 }
 
 async function pullState(uid=currentUser?.uid){

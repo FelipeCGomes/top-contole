@@ -990,6 +990,23 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .family-member-info small{margin-top:2px;color:var(--muted);font-size:8px}
 .member-status{padding:4px 7px;border-radius:999px;font-size:7px;font-weight:850;text-transform:uppercase;letter-spacing:.05em}
 .member-status.active{color:var(--income);background:rgba(41,211,159,.10)}
+.member-status.admin{color:#b8aeff;background:rgba(123,97,255,.12)}
+.family-member-row.admin{border-color:rgba(123,97,255,.24);background:linear-gradient(120deg,rgba(123,97,255,.055),transparent 55%),var(--surface-2)}
+.family-member-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+.family-admin-action{
+  min-height:30px;
+  border:1px solid rgba(123,97,255,.24);
+  border-radius:9px;
+  padding:5px 8px;
+  color:#b8aeff;
+  background:rgba(123,97,255,.08);
+  font-size:8px;
+  font-weight:850;
+  white-space:nowrap;
+  transition:transform .16s var(--ease),background .16s ease,border-color .16s ease
+}
+.family-admin-action:hover{transform:translateY(-1px);border-color:rgba(123,97,255,.42);background:rgba(123,97,255,.13)}
+
 .member-status.pending{color:var(--warning);background:rgba(255,179,71,.10)}
 .member-status.declined{color:var(--danger);background:rgba(255,95,109,.10)}
 .family-finance-panel{margin-top:11px}
@@ -1411,6 +1428,8 @@ body.is-loading{cursor:wait}
   .family-notification-actions{grid-column:1/-1;justify-content:stretch}
   .family-notification-actions .btn{flex:1}
   .family-member-row{grid-template-columns:34px minmax(0,1fr) auto}
+  .family-member-actions{grid-column:2/-1;justify-content:flex-start;flex-wrap:wrap}
+
   .family-member-row .member-remove{grid-column:3;grid-row:1 / span 2}
   .family-member-row .member-status{grid-column:2;justify-self:start}
   .family-flow{display:grid;grid-template-columns:1fr}
@@ -1456,6 +1475,9 @@ body.is-loading{cursor:wait}
     grid-template-columns:34px minmax(0,1fr);
     align-items:start;
   }
+  .family-member-actions{grid-column:2;justify-content:flex-start;margin-top:3px}
+  .family-admin-action{white-space:normal}
+
   .family-member-row .member-status{grid-column:2}
   .family-member-row .member-remove{grid-column:2;grid-row:auto;justify-self:end;margin-top:-31px}
   .topbar-actions #notificationsBtn{width:38px;height:38px;min-width:38px}

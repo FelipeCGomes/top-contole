@@ -300,11 +300,11 @@
 
       <section id="view-recurring" class="view">
         <div class="section-toolbar">
-          <div><span class="eyebrow">AUTOMAÇÃO MENSAL</span><h3>Custos fixos e receitas recorrentes</h3><p class="muted">Itens ativos são lançados automaticamente a cada mês.</p></div>
+          <div><span class="eyebrow">AUTOMAÇÃO MENSAL</span><h3>Custos fixos recorrentes</h3><p class="muted">Somente despesas recorrentes. Rendas como salário e renda extra ficam em Configurações.</p></div>
           <button class="btn primary" data-open="recurring">＋ Novo custo fixo</button>
         </div>
         <div id="recurringGrid" class="card-grid"></div>
-        <div id="recurringEmpty" class="empty-block panel" hidden><div>↻</div><h3>Nenhum item recorrente</h3><p>Cadastre aluguel, internet, assinaturas, salário e outras cobranças fixas.</p></div>
+        <div id="recurringEmpty" class="empty-block panel" hidden><div>↻</div><h3>Nenhum custo fixo</h3><p>Cadastre aluguel, internet, assinaturas, condomínio e outras despesas recorrentes.</p></div>
       </section>
 
       <section id="view-shopping" class="view">
@@ -648,6 +648,27 @@
             </div>
           </section>
 
+          <section class="settings-section income-settings-section">
+            <div class="settings-section-head">
+              <div><span class="eyebrow">RENDAS</span><h3>Rendas recorrentes</h3></div>
+              <p>Cadastre salário, renda extra e outras entradas mensais. Vales de refeição, alimentação e combustível devem ser cadastrados como cartões.</p>
+            </div>
+            <div class="income-settings-toolbar">
+              <div>
+                <strong>Fontes de renda</strong>
+                <span id="incomeSourcesSummary">Nenhuma renda recorrente cadastrada.</span>
+              </div>
+              <button class="btn primary" type="button" data-open="incomeSource">＋ Nova renda</button>
+            </div>
+            <div id="incomeSourcesGrid" class="income-source-grid"></div>
+            <div id="incomeSourcesEmpty" class="empty-block income-source-empty">
+              <div>💵</div>
+              <h3>Cadastre sua renda mensal</h3>
+              <p>Salário, renda extra, freelance, aluguel recebido ou outra entrada recorrente.</p>
+              <button class="btn soft" type="button" data-open="incomeSource">＋ Adicionar renda</button>
+            </div>
+          </section>
+
           <section class="settings-section">
             <div class="settings-section-head"><div><span class="eyebrow">PREFERÊNCIAS</span><h3>Visual e planejamento</h3></div><p>Ajustes que afetam a experiência e o dashboard.</p></div>
             <div class="settings-grid settings-grid-compact">
@@ -841,12 +862,12 @@
 
       <form id="recurringForm" class="modal-form" hidden>
         <input id="recurringId" type="hidden" />
-        <div class="type-switch span-2">
-          <label><input type="radio" name="recType" value="expense" checked /><span>Despesa fixa</span></label>
-          <label><input type="radio" name="recType" value="income" /><span>Receita fixa</span></label>
+        <div class="modal-info span-2">
+          <strong>Despesa recorrente</strong>
+          <span>Salário e outras entradas recorrentes são configurados em Configurações → Rendas.</span>
         </div>
         <label class="field span-2">Descrição<input id="recDescription" required maxlength="80" placeholder="Ex.: Internet" /></label>
-        <label class="field">Natureza<select id="recKind"><option value="fixed">Custo/receita fixa</option><option value="subscription">Assinatura</option></select></label>
+        <label class="field">Natureza<select id="recKind"><option value="fixed">Custo fixo</option><option value="subscription">Assinatura</option></select></label>
         <label class="field">Valor<input id="recAmount" required type="number" min="0.01" step="0.01" /></label>
         <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
         <label class="field">Categoria<select id="recCategory" required></select></label>
@@ -857,6 +878,41 @@
         </label>
         <label class="check-row span-2"><input id="recActive" type="checkbox" checked /> Ativo e gerar automaticamente</label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar recorrência</button></div>
+      </form>
+
+      <form id="incomeSourceForm" class="modal-form" hidden>
+        <input id="incomeSourceId" type="hidden" />
+        <label class="field span-2">Descrição
+          <input id="incomeSourceDescription" required maxlength="80" placeholder="Ex.: Salário principal" />
+        </label>
+        <label class="field">Tipo
+          <select id="incomeSourceKind">
+            <option value="salary">Salário</option>
+            <option value="extra">Renda extra</option>
+            <option value="freelance">Freelance</option>
+            <option value="rent">Aluguel recebido</option>
+            <option value="commission">Comissão</option>
+            <option value="other">Outra renda</option>
+          </select>
+        </label>
+        <label class="field">Valor mensal
+          <input id="incomeSourceAmount" required type="number" min="0.01" step="0.01" />
+        </label>
+        <label class="field">Dia do recebimento
+          <input id="incomeSourceDay" required type="number" min="1" max="31" value="5" />
+        </label>
+        <label class="field">Conta de destino
+          <select id="incomeSourceAccount"></select>
+        </label>
+        <label class="check-row span-2"><input id="incomeSourceActive" type="checkbox" checked /> Ativa e gerar lançamento automaticamente</label>
+        <div class="modal-info span-2">
+          <strong>Vales e benefícios</strong>
+          <span>Vale-refeição, vale-alimentação e vale-combustível devem ser cadastrados em Cartões, pois não entram como renda em dinheiro.</span>
+        </div>
+        <div class="modal-actions span-2">
+          <button type="button" class="btn soft modal-cancel">Cancelar</button>
+          <button class="btn primary" type="submit">Salvar renda</button>
+        </div>
       </form>
 
       <form id="budgetForm" class="modal-form" hidden>
@@ -901,12 +957,21 @@
 
       <form id="cardForm" class="modal-form" hidden>
         <input id="cardId" type="hidden" />
-        <label class="field span-2">Nome do cartão<input id="cardName" required maxlength="60" placeholder="Ex.: Nubank Platinum" /></label>
-        <label class="field">Bandeira<select id="cardBrand"><option>Visa</option><option>Mastercard</option><option>Elo</option><option>Amex</option><option>Hipercard</option><option>Outro</option></select></label>
-        <label class="field">Limite<input id="cardLimit" required type="number" min="0" step="0.01" /></label>
-        <label class="field">Dia de fechamento<input id="cardClosingDay" required type="number" min="1" max="31" value="3" /></label>
-        <label class="field">Dia de vencimento<input id="cardDueDay" required type="number" min="1" max="31" value="10" /></label>
-        <label class="field">Conta de pagamento<select id="cardAccount"></select></label>
+        <label class="field span-2">Nome do cartão<input id="cardName" required maxlength="60" placeholder="Ex.: Nubank Platinum ou Vale Alimentação" /></label>
+        <label class="field">Tipo
+          <select id="cardType">
+            <option value="credit">Cartão de crédito</option>
+            <option value="meal">Vale-refeição</option>
+            <option value="food">Vale-alimentação</option>
+            <option value="fuel">Vale-combustível</option>
+            <option value="benefit">Outro benefício</option>
+          </select>
+        </label>
+        <label class="field">Bandeira<select id="cardBrand"><option>Visa</option><option>Mastercard</option><option>Elo</option><option>Amex</option><option>Hipercard</option><option>Alelo</option><option>Sodexo/Pluxee</option><option>Ticket</option><option>VR</option><option>Outro</option></select></label>
+        <label class="field"><span id="cardLimitLabel">Limite</span><input id="cardLimit" required type="number" min="0" step="0.01" /></label>
+        <label id="cardClosingWrap" class="field">Dia de fechamento<input id="cardClosingDay" required type="number" min="1" max="31" value="3" /></label>
+        <label id="cardDueWrap" class="field">Dia de vencimento<input id="cardDueDay" required type="number" min="1" max="31" value="10" /></label>
+        <label id="cardAccountWrap" class="field">Conta de pagamento<select id="cardAccount"></select></label>
         <label class="field">Cor<input id="cardColor" type="color" value="#141b34" /></label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar cartão</button></div>
       </form>

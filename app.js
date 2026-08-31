@@ -1962,8 +1962,11 @@ function renderCloudUi(){
   ['googleLoginBtn','googleSettingsBtn'].forEach(function(id){
     const el=$('#'+id);
     if(el){
-      el.disabled=!configured;
+      // Nunca deixe o acesso Google silenciosamente desabilitado.
+      // O clique aguarda a inicialização do Firebase e exibe erro se necessário.
+      el.disabled=false;
       el.hidden=!!user;
+      el.setAttribute('aria-disabled','false');
     }
   });
 

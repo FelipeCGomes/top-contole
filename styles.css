@@ -810,6 +810,26 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 
 
 /* Shopping list */
+.shopping-title-line{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.shopping-title-line h3{margin:3px 0 0}
+#shoppingSharingBadge.family-shared{
+  color:var(--accent);
+  border-color:rgba(22,199,183,.24);
+  background:rgba(22,199,183,.08);
+}
+.shopping-manual-field{
+  grid-column:1/-1;
+  padding:9px 10px;
+  border:1px dashed rgba(123,97,255,.28);
+  border-radius:10px;
+  background:rgba(123,97,255,.04);
+}
+.shopping-manual-field[hidden]{display:none!important}
 .shopping-toolbar-actions{
   display:flex;
   align-items:center;
@@ -1656,6 +1676,8 @@ body.is-loading{cursor:wait}
   .shopping-save-state{width:100%;justify-content:space-between}
   .shopping-add-row{grid-template-columns:1fr 1fr;padding:10px}
   .shopping-add-row .shopping-product-field{grid-column:1/-1}
+  .shopping-add-row .shopping-manual-field{grid-column:1/-1}
+  .shopping-title-line{align-items:flex-start;flex-direction:column;gap:5px}
   .shopping-add-row .btn{grid-column:1/-1;width:100%}
   .shopping-grid-wrap{border:0;background:transparent;overflow:visible}
   .shopping-grid-head{display:none}

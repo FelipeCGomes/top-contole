@@ -42,6 +42,7 @@ let cloudAuthUnsubscribe = null;
 let cloudPushTimer = null;
 let cloudApplying = false;
 let cloudLastSyncedAt = null;
+let cloudStorageMode = 'unknown';
 let cloudSyncedState = null;
 let cloudSyncPending = false;
 let cloudSyncDueAt = 0;
@@ -556,13 +557,13 @@ function bindEvents(){
   $('#themeSelect').addEventListener('change', async function(e){
     appState.settings.theme = e.target.value;
     applyTheme();
-    await saveVault();
+    await saveVault(false);
+    renderSettingsPersistenceStatus();
   });
-  $('#monthlyBudgetInput').addEventListener('change', async function(e){
-    appState.settings.monthlyBudget = Math.max(0, Number(e.target.value || 0));
-    await saveVault();
-    renderAll();
-    toast('Limite mensal atualizado.','success');
+
+  $('#monthlyBudgetInput').addEventListener('input', handleMonthlyBudgetInput);
+  $('#monthlyBudgetInput').addEventListener('blur', function(){
+    renderSettingsPersistenceStatus();
   });
 
   $('#backupBtn').addEventListener('click', exportEncryptedBackup);
@@ -2731,11 +2732,98 @@ function populateCategorySelects(){
   filter.value = currentFilter || 'all';
 }
 
+
+async function handleMonthlyBudgetInput(e){
+  if(!appState) return;
+
+  const value=Math.max(0,Number(e.target.value || 0));
+  appState.settings.monthlyBudget=value;
+
+  // Atualiza apenas os visuais dependentes do limite para não recriar o campo
+  // enquanto o usuário ainda está digitando.
+  renderDashboard();
+
+  const status=$('#monthlyBudgetSaveStatus');
+  if(status){
+    status.className='settings-save-status pending';
+    status.textContent=navigator.onLine
+      ? 'Pendente · sincroniza 10s após a última alteração'
+      : 'Offline · será enviado ao Firestore quando a conexão voltar';
+  }
+
+  await saveVault(false);
+  renderSettingsPersistenceStatus();
+}
+
+function renderSettingsPersistenceStatus(){
+  const status=$('#monthlyBudgetSaveStatus');
+  const path=$('#cloudDataPath');
+  const mode=$('#cloudDataMode');
+
+  const uidLabel=cloudUser?.uid ? cloudUser.uid : '{uid}';
+
+  if(path){
+    path.textContent=cloudStorageMode==='legacy'
+      ? 'users/'+uidLabel+'/state/main'
+      : 'users/'+uidLabel+'/data/*';
+  }
+
+  if(mode){
+    mode.textContent=cloudStorageMode==='legacy'
+      ? 'Fallback legado ativo · publique as regras atuais para migrar para data/*'
+      : cloudStorageMode==='modular'
+        ? 'Firestore modular · cache local somente para offline'
+        : 'Aguardando confirmação da estrutura no Firestore';
+  }
+
+  if(!status) return;
+
+  const settingsPending=!!(
+    appState
+    && changedStateSections(appState).includes('settings')
+    && cloudSyncPending
+  );
+
+  if(!cloudUser){
+    status.className='settings-save-status';
+    status.textContent='Entre com Google para sincronizar configurações';
+    return;
+  }
+
+  if(settingsPending){
+    status.className='settings-save-status pending';
+    const seconds=Math.max(0,Math.ceil((cloudSyncDueAt-Date.now())/1000));
+    status.textContent=navigator.onLine
+      ? 'Pendente · settings será enviado em '+Math.max(1,seconds)+'s'
+      : 'Offline · settings pendente';
+    return;
+  }
+
+  if(cloudStorageMode==='legacy'){
+    status.className='settings-save-status legacy';
+    status.textContent='Salvo no Firestore legado · state/main';
+    return;
+  }
+
+  if(cloudStorageMode==='modular'){
+    status.className='settings-save-status synced';
+    status.textContent='Sincronizado · data/settings → value.monthlyBudget';
+    return;
+  }
+
+  status.className='settings-save-status';
+  status.textContent='Firestore · users/{uid}/data/settings';
+}
+
 function syncSettingsFields(){
   if(!appState) return;
   $('#themeSelect').value = appState.settings.theme || 'system';
-  $('#monthlyBudgetInput').value = Number(appState.settings.monthlyBudget || 0);
+  const budgetField=$('#monthlyBudgetInput');
+  if(budgetField && document.activeElement!==budgetField){
+    budgetField.value = Number(appState.settings.monthlyBudget || 0);
+  }
   if($('#privacyBtn')) $('#privacyBtn').textContent = appState.settings.privacyMode ? '🙈' : '👁';
+  renderSettingsPersistenceStatus();
 }
 
 function quickToggleTheme(){
@@ -3038,6 +3126,7 @@ async function handleCloudUser(user){
         remote=await cloud.pullState();
       }
 
+      cloudStorageMode=remote?.modular ? 'modular' : remote?.legacy ? 'legacy' : cloudStorageMode;
       const source=applyBestState(local,remote);
 
       if(source==='empty'){
@@ -3053,6 +3142,7 @@ async function handleCloudUser(user){
         try{
           const migratedResult=await cloud.migrateLegacyState(clone(remote.state));
           if(migratedResult?.migrated){
+            cloudStorageMode='modular';
             cloudSyncedState=clone(normalizeState(remote.state));
             cloudSyncPending=false;
             cloudSyncDueAt=0;
@@ -3206,6 +3296,7 @@ async function cloudSignOut(){
 
     cloudUser=null;
     appState=null;
+    cloudStorageMode='unknown';
     cloudSyncedState=null;
     cloudSyncPending=false;
     cloudSyncDueAt=0;
@@ -3301,6 +3392,7 @@ function queueCloudPush(state,options={}){
         sections:currentSections
       });
 
+      cloudStorageMode=result?.fallbackLegacy ? 'legacy' : 'modular';
       cloudSyncedState=clone(currentSnapshot);
       cloudLastSyncedAt=new Date();
 
@@ -3423,6 +3515,7 @@ async function testFirestoreFromUi(){
         });
 
         const remote=await cloud.pullStateFromServer(cloudUser.uid);
+        cloudStorageMode=remote?.modular ? 'modular' : remote?.legacy ? 'legacy' : cloudStorageMode;
 
         if(!pushed?.synced || !remote?.state || !remote?.modular){
           throw new Error('A gravação modular não pôde ser confirmada diretamente no servidor.');
@@ -3613,6 +3706,7 @@ function setCloudStatus(kind,message){
     const dot=lock.querySelector('.sync-dot');
     if(dot) dot.className='sync-dot '+(kind || '');
   }
+  renderSettingsPersistenceStatus();
 }
 
 function renderCloudUi(){

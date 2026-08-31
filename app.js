@@ -637,7 +637,7 @@ async function wipeVault(){
   if(!ok) return;
   appState = makeInitialState();
   localStateUpdatedAt = new Date().toISOString();
-  await saveVault(true);
+  await saveVault(false);
   renderAll();
   renderFamily();
   toast('Seus dados financeiros foram apagados.','success');
@@ -852,7 +852,7 @@ async function readBackupFile(e){
     const ok=await confirmDialog('Restaurar este backup?','Seus dados atuais serão substituídos e a alteração será sincronizada com sua conta Google.');
     if(!ok) return;
     appState=imported;
-    await saveVault(true);
+    await saveVault(false);
     renderAll();
     renderFamily();
     toast('Backup restaurado com sucesso.','success');
@@ -1870,36 +1870,11 @@ async function addShoppingItem(e){
   resetShoppingItemForm();
   renderShoppingLists();
 
-  if(shoppingIsFamilyShared()){
-    const status=$('#shoppingAutosaveStatus');
-    if(status){
-      status.textContent='Salvando para a família…';
-      status.classList.add('saving');
-    }
-
-    try{
-      await window.StopGastosCloud.saveFamilyShoppingItem(
-        familyContext.family.id,
-        list.id,
-        item
-      );
-      if(status){
-        status.textContent='Sincronizado com a família';
-        status.classList.remove('saving');
-      }
-    }catch(err){
-      toast(err.message || 'Não foi possível compartilhar este item.','error');
-      if(status){
-        status.textContent='Falha ao sincronizar';
-        status.classList.remove('saving');
-      }
-    }
-  }else{
-    scheduleShoppingAutosave(item);
-  }
+  scheduleShoppingAutosave(item);
 
   $('#shoppingItemPreset').focus();
 }
+
 
 function scheduleShoppingAutosave(item){
   const status=$('#shoppingAutosaveStatus');
@@ -1907,7 +1882,9 @@ function scheduleShoppingAutosave(item){
   const key=item?.id || 'personal';
 
   if(status){
-    status.textContent='Salvando…';
+    status.textContent=shared
+      ? 'Alteração pendente · sincroniza em 10s'
+      : 'Salvo · sincroniza em 10s';
     status.classList.add('saving');
   }
 
@@ -1938,17 +1915,17 @@ function scheduleShoppingAutosave(item){
           status.textContent='Falha ao sincronizar';
           status.classList.remove('saving');
         }
-        toast(err.message || 'Não foi possível sincronizar a alteração.','error');
+        toast(err.message || 'Não foi possível sincronizar a alteração compartilhada.','error');
       }finally{
         shoppingAutosaveTimers.delete(key);
       }
-    },380);
+    },CLOUD_SYNC_DELAY_MS);
 
     shoppingAutosaveTimers.set(key,timer);
     return;
   }
 
-  saveVault().catch(function(){
+  saveVault(false).catch(function(){
     if(status){
       status.textContent='Salvo neste dispositivo';
       status.classList.remove('saving');
@@ -1956,12 +1933,57 @@ function scheduleShoppingAutosave(item){
   });
 
   const timer=setTimeout(function(){
-    if(status){
-      status.textContent='Salvo automaticamente';
+    if(status && cloudSyncPending){
+      status.textContent='Sincronização pendente';
+    }else if(status){
+      status.textContent='Sincronizado';
       status.classList.remove('saving');
     }
     shoppingAutosaveTimers.delete(key);
-  },420);
+  },CLOUD_SYNC_DELAY_MS+250);
+
+  shoppingAutosaveTimers.set(key,timer);
+}
+
+function scheduleFamilyShoppingDelete(list,item){
+  const status=$('#shoppingAutosaveStatus');
+  const key='delete:'+(item?.id || uid('del'));
+  const familyId=familyContext?.family?.id || '';
+  const listId=list?.id || '';
+
+  if(status){
+    status.textContent='Exclusão pendente · sincroniza em 10s';
+    status.classList.add('saving');
+  }
+
+  if(shoppingAutosaveTimers.has(key)){
+    clearTimeout(shoppingAutosaveTimers.get(key));
+  }
+
+  const timer=setTimeout(async function(){
+    try{
+      if(!familyId || !listId || !item?.id) return;
+
+      await window.StopGastosCloud.deleteFamilyShoppingItem(
+        familyId,
+        listId,
+        item.id
+      );
+
+      if(status){
+        status.textContent='Sincronizado com a família';
+        status.classList.remove('saving');
+      }
+    }catch(err){
+      if(status){
+        status.textContent='Falha ao sincronizar';
+        status.classList.remove('saving');
+      }
+      toast(err.message || 'Não foi possível remover o item compartilhado.','error');
+    }finally{
+      shoppingAutosaveTimers.delete(key);
+    }
+  },CLOUD_SYNC_DELAY_MS);
 
   shoppingAutosaveTimers.set(key,timer);
 }
@@ -2020,16 +2042,7 @@ async function handleShoppingGridClick(e){
   renderShoppingLists();
 
   if(shoppingIsFamilyShared()){
-    try{
-      await window.StopGastosCloud.deleteFamilyShoppingItem(
-        familyContext.family.id,
-        list.id,
-        id
-      );
-      $('#shoppingAutosaveStatus').textContent='Sincronizado com a família';
-    }catch(err){
-      toast(err.message || 'Não foi possível remover o item compartilhado.','error');
-    }
+    scheduleFamilyShoppingDelete(list,item);
   }else{
     scheduleShoppingAutosave();
   }
@@ -2081,7 +2094,7 @@ async function deleteActiveShoppingList(){
       appState.shoppingActiveListId=appState.shoppingLists[0]?.id || '';
       logAudit('shopping-list-delete',list.name);
       renderShoppingLists();
-      await saveVault(true);
+      await saveVault(false);
     }
   });
 
@@ -2922,7 +2935,14 @@ function bindCloudEvents(){
     toast((notification.title ? notification.title+': ' : '')+(notification.body || 'Nova notificação financeira.'),'info');
   });
   window.addEventListener('online',function(){
-    if(cloudUser) forceCloudSync(false);
+    if(cloudUser && cloudSyncPending && appState){
+      queueCloudPush(clone(appState),{
+        force:false,
+        sections:changedStateSections(appState)
+      });
+    }else if(cloudUser){
+      setCloudStatus('synced','Conectado · sem alterações pendentes');
+    }
   });
   window.addEventListener('offline',function(){
     if(cloudUser) setCloudStatus('offline','Offline · alterações ficam salvas localmente');

@@ -46,6 +46,17 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - O admin acompanha membros Ativos, Pendentes e Recusados
 - Sino de notificações com badge no topo do aplicativo
 
+
+## Experiência e conta
+
+- Loader global com spinner e mensagens contextuais para autenticação, sincronização, Família e salvamentos importantes
+- Tela **Sobre** integrada à aplicação
+- Tela **Termos de Uso** integrada à aplicação
+- Tela **Política de Privacidade** integrada à aplicação
+- Exclusão definitiva da conta com confirmação digitando `EXCLUIR` e reautenticação Google
+- Proprietários de família com outros vínculos não podem excluir a conta até remover os demais membros, evitando famílias órfãs
+- A exclusão procura remover estado financeiro, perfil, dispositivos, diretório de e-mail, vínculos familiares e autenticação Firebase
+
 ## Estrutura Firebase
 
 - `userDirectory/{emailHash}`: diretório restrito para localizar uma conta por e-mail exato

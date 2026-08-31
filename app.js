@@ -957,24 +957,40 @@ function bindRowActions(){
 
 function renderRecurring(){
   if(!appState) return;
-  const list = appState.recurring.slice().sort(function(a,b){return Number(a.day)-Number(b.day);});
-  $('#recurringEmpty').hidden = list.length !== 0;
-  $('#recurringGrid').innerHTML = list.map(function(r){
-    const c = getCategory(r.category);
-    const isSub = r.kind === 'subscription';
-    const annual = isSub ? '<small class="annual-cost">Custo anual: ' + money(Number(r.amount)*12) + '</small>' : '';
-    return '<article class="rec-card"><div class="card-top"><span class="category-icon">' + c.icon + '</span><div class="card-menu"><button class="row-btn edit-rec" data-id="' + r.id + '">✎</button><button class="row-btn delete-rec" data-id="' + r.id + '">×</button></div></div>' +
-      '<h4>' + esc(r.description) + '</h4><p>' + esc(c.name) + ' · dia ' + Number(r.day) + '</p>' + annual +
-      '<div class="rec-value ' + r.type + '">' + (r.type==='expense'?'- ':'+ ') + money(r.amount) + '</div>' +
-      '<div class="rec-bottom"><span class="type-pill ' + r.type + '">' + (isSub?'Assinatura':(r.type==='expense'?'Despesa':'Receita')) + '</span><input class="toggle rec-toggle" data-id="' + r.id + '" type="checkbox" ' + (r.active!==false?'checked':'') + ' /></div></article>';
+  const list=appState.recurring.slice().sort(function(a,b){return Number(a.day)-Number(b.day);});
+  $('#recurringEmpty').hidden=list.length!==0;
+
+  $('#recurringGrid').innerHTML=list.map(function(r){
+    const c=getCategory(r.category);
+    const isSub=r.kind==='subscription';
+    const annual=isSub ? '<small class="annual-cost">Custo anual: '+money(Number(r.amount)*12)+'</small>' : '';
+    const linkedCard=r.payment==='Cartão de crédito' && r.cardId ? getCard(r.cardId) : null;
+    const paymentLabel=linkedCard
+      ? '💳 '+linkedCard.name
+      : (r.payment || 'Automático');
+
+    return '<article class="rec-card">'+
+      '<div class="card-top"><span class="category-icon">'+c.icon+'</span><div class="card-menu"><button class="row-btn edit-rec" data-id="'+r.id+'">✎</button><button class="row-btn delete-rec" data-id="'+r.id+'">×</button></div></div>'+
+      '<h4>'+esc(r.description)+'</h4>'+
+      '<p>'+esc(c.name)+' · dia '+Number(r.day)+'</p>'+
+      '<div class="rec-payment-line">'+esc(paymentLabel)+'</div>'+
+      annual+
+      '<div class="rec-value '+r.type+'">'+(r.type==='expense'?'- ':'+ ')+money(r.amount)+'</div>'+
+      '<div class="rec-bottom"><span class="type-pill '+r.type+'">'+(isSub?'Assinatura':(r.type==='expense'?'Despesa':'Receita'))+'</span><input class="toggle rec-toggle" data-id="'+r.id+'" type="checkbox" '+(r.active!==false?'checked':'')+' /></div>'+
+    '</article>';
   }).join('');
 
-  $$('.edit-rec').forEach(function(btn){ btn.onclick = function(){ editRecurring(btn.dataset.id); }; });
-  $$('.delete-rec').forEach(function(btn){ btn.onclick = function(){ deleteRecurring(btn.dataset.id); }; });
+  $$('.edit-rec').forEach(function(btn){btn.onclick=function(){editRecurring(btn.dataset.id);};});
+  $$('.delete-rec').forEach(function(btn){btn.onclick=function(){deleteRecurring(btn.dataset.id);};});
   $$('.rec-toggle').forEach(function(input){
-    input.onchange = async function(){
-      const rec = appState.recurring.find(function(r){return r.id===input.dataset.id;});
-      if(rec){ rec.active = input.checked; logAudit('recurring-toggle',rec.description); await saveVault(); toast(input.checked?'Recorrência ativada.':'Recorrência pausada.','success'); }
+    input.onchange=async function(){
+      const rec=appState.recurring.find(function(r){return r.id===input.dataset.id;});
+      if(rec){
+        rec.active=input.checked;
+        logAudit('recurring-toggle',rec.description);
+        await saveVault();
+        toast(input.checked?'Recorrência ativada.':'Recorrência pausada.','success');
+      }
     };
   });
 }
@@ -1130,7 +1146,9 @@ function openModal(type,data){
     $('#recDay').value = data ? data.day : new Date().getDate();
     $('#recCategory').value = data ? data.category : 'moradia';
     $('#recPayment').value = data ? (data.payment || 'Débito automático') : 'Débito automático';
+    $('#recCard').value = data ? (data.cardId || '') : '';
     $('#recActive').checked = data ? data.active !== false : true;
+    updateRecurringPaymentFields();
   }
   if(type === 'budget'){
     $('#modalTitle').textContent = data ? 'Editar orçamento' : 'Novo orçamento';
@@ -1309,29 +1327,54 @@ async function saveTransactionForm(e){
 
 async function saveRecurringForm(e){
   return withLoading("Salvando recorrência…","Atualizando seus custos e receitas fixas.",async function(){
-  e.preventDefault();
-  const id = $('#recurringId').value;
-  const record = {
-    id:id || uid('rec'),
-    type:getRadio('recType'),
-    kind:$('#recKind').value || 'fixed',
-    description:$('#recDescription').value.trim(),
-    amount:Number($('#recAmount').value),
-    day:Math.max(1,Math.min(31,Number($('#recDay').value))),
-    category:$('#recCategory').value,
-    payment:$('#recPayment').value,
-    active:$('#recActive').checked,
-    updatedAt:new Date().toISOString()
-  };
-  if(!record.description || !(record.amount>0)) return toast('Preencha descrição e valor.','error');
-  const index = appState.recurring.findIndex(function(r){return r.id===id;});
-  if(index>=0) appState.recurring[index] = Object.assign({},appState.recurring[index],record);
-  else appState.recurring.push(record);
-  ensureRecurringForMonth(selectedMonth);
-  logAudit(index>=0?'recurring-update':'recurring-create',record.description);
-  await commitStateChange();
-  toast(index>=0?'Recorrência atualizada.':'Recorrência criada.','success');
+    e.preventDefault();
 
+    const id=$('#recurringId').value;
+    const payment=$('#recPayment').value;
+    const cardId=payment==='Cartão de crédito' ? ($('#recCard').value || '') : '';
+
+    if(payment==='Cartão de crédito'){
+      if(!appState.cards.length){
+        toast('Cadastre um cartão antes de vincular um custo fixo ao crédito.','error');
+        return;
+      }
+      if(!cardId || !getCard(cardId)){
+        toast('Selecione o cartão que receberá este custo fixo.','error');
+        return;
+      }
+    }
+
+    const record={
+      id:id || uid('rec'),
+      type:getRadio('recType'),
+      kind:$('#recKind').value || 'fixed',
+      description:$('#recDescription').value.trim(),
+      amount:Number($('#recAmount').value),
+      day:Math.max(1,Math.min(31,Number($('#recDay').value))),
+      category:$('#recCategory').value,
+      payment,
+      cardId,
+      active:$('#recActive').checked,
+      updatedAt:new Date().toISOString()
+    };
+
+    if(!record.description || !(record.amount>0)){
+      toast('Preencha descrição e valor.','error');
+      return;
+    }
+
+    const index=appState.recurring.findIndex(function(r){return r.id===id;});
+    if(index>=0){
+      appState.recurring[index]=Object.assign({},appState.recurring[index],record);
+    }else{
+      appState.recurring.push(record);
+    }
+
+    syncRecurringTransactionForMonth(record,selectedMonth);
+
+    logAudit(index>=0?'recurring-update':'recurring-create',record.description);
+    await commitStateChange();
+    toast(index>=0?'Recorrência atualizada.':'Recorrência criada.','success');
   });
 }
 
@@ -1407,25 +1450,67 @@ async function deleteGoal(id){
 
 function ensureRecurringForMonth(monthKey){
   if(!appState) return;
-  appState.recurring.filter(function(r){return r.active!==false;}).forEach(function(r){
-    const recurrenceKey = r.id + ':' + monthKey;
-    if(appState.transactions.some(function(t){return t.recurrenceKey===recurrenceKey;})) return;
-    const date = localDateKey(safeMonthDate(monthKey,Number(r.day || 1)));
-    appState.transactions.push({
-      id:uid('tx'),
-      type:r.type,
-      description:r.description,
-      amount:Number(r.amount),
-      date:date,
-      category:r.category,
-      payment:r.payment || 'Automático',
-      notes:'Gerado automaticamente a partir de custo fixo',
-      sourceRecurringId:r.id,
-      recurrenceKey:recurrenceKey,
-      createdAt:new Date().toISOString()
-    });
-  });
+  appState.recurring
+    .filter(function(r){return r.active!==false;})
+    .forEach(function(r){syncRecurringTransactionForMonth(r,monthKey);});
 }
+
+function recurringTransactionData(recurring,monthKey){
+  const chargeDate=localDateKey(safeMonthDate(monthKey,Number(recurring.day || 1)));
+  const isCredit=recurring.payment==='Cartão de crédito' && recurring.cardId;
+  const card=isCredit ? getCard(recurring.cardId) : null;
+
+  let date=chargeDate;
+  let invoiceMonth='';
+  let cardId='';
+
+  if(card){
+    invoiceMonth=cardInvoiceMonth(chargeDate,card);
+    date=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
+    cardId=card.id;
+  }
+
+  return {
+    type:recurring.type,
+    description:recurring.description,
+    amount:Number(recurring.amount),
+    date,
+    purchaseDate:chargeDate,
+    invoiceMonth,
+    category:recurring.category,
+    payment:recurring.payment || 'Automático',
+    accountId:'',
+    cardId,
+    notes:card
+      ? 'Gerado automaticamente a partir de custo fixo · '+card.name
+      : 'Gerado automaticamente a partir de custo fixo',
+    sourceRecurringId:recurring.id,
+    recurrenceKey:recurring.id+':'+monthKey,
+    updatedAt:new Date().toISOString()
+  };
+}
+
+function syncRecurringTransactionForMonth(recurring,monthKey){
+  if(!appState || !recurring || recurring.active===false) return null;
+
+  const data=recurringTransactionData(recurring,monthKey);
+  const existing=appState.transactions.find(function(t){
+    return t.recurrenceKey===data.recurrenceKey;
+  });
+
+  if(existing){
+    Object.assign(existing,data);
+    return existing;
+  }
+
+  const created=Object.assign({},data,{
+    id:uid('tx'),
+    createdAt:new Date().toISOString()
+  });
+  appState.transactions.push(created);
+  return created;
+}
+
 
 async function loadDemoData(){
   const ok = await confirmDialog('Carregar dados de demonstração?','Serão adicionados exemplos de receitas, despesas, recorrências, orçamentos e metas ao cofre atual.');
@@ -2688,6 +2773,8 @@ function bindV2Events(){
   $('#txAmount').addEventListener('input',function(){updateInstallmentFields();});
   $('#txInstallments').addEventListener('input',function(){updateInstallmentFields();});
   $('#txCard').addEventListener('change',function(){updateInstallmentFields();});
+  $('#recPayment').addEventListener('change',updateRecurringPaymentFields);
+  $('#recCard').addEventListener('change',updateRecurringPaymentFields);
   $('#printReportBtn').addEventListener('click',function(){window.print();});
 }
 
@@ -2702,16 +2789,64 @@ function applyPrivacy(){
 
 function populateFinanceSelects(){
   if(!appState) return;
-  const accounts='<option value="">Sem conta vinculada</option>'+appState.accounts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';}).join('');
+
+  const accounts='<option value="">Sem conta vinculada</option>'+appState.accounts.map(function(a){
+    return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';
+  }).join('');
+
   ['txAccount','cardAccount','billAccount'].forEach(function(id){
-    const el=$('#'+id); if(!el) return; const current=el.value; el.innerHTML=accounts; el.value=current||'';
+    const el=$('#'+id);
+    if(!el) return;
+    const current=el.value;
+    el.innerHTML=accounts;
+    el.value=current||'';
   });
-  const transferAccounts=appState.accounts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';}).join('');
+
+  const transferAccounts=appState.accounts.map(function(a){
+    return '<option value="'+esc(a.id)+'">'+esc((a.icon||'🏦')+' '+a.name)+'</option>';
+  }).join('');
+
   ['transferFrom','transferTo'].forEach(function(id){
-    const el=$('#'+id); if(!el) return; const current=el.value; el.innerHTML=transferAccounts; if(current) el.value=current;
+    const el=$('#'+id);
+    if(!el) return;
+    const current=el.value;
+    el.innerHTML=transferAccounts;
+    if(current) el.value=current;
   });
-  const cards='<option value="">Selecione um cartão</option>'+appState.cards.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name+' · '+c.brand)+'</option>';}).join('');
-  const cardEl=$('#txCard'); if(cardEl){const current=cardEl.value; cardEl.innerHTML=cards; cardEl.value=current||'';}
+
+  const cards='<option value="">Selecione um cartão</option>'+appState.cards.map(function(c){
+    return '<option value="'+esc(c.id)+'">'+esc(c.name+' · '+c.brand)+'</option>';
+  }).join('');
+
+  ['txCard','recCard'].forEach(function(id){
+    const el=$('#'+id);
+    if(!el) return;
+    const current=el.value;
+    el.innerHTML=cards;
+    el.value=current||'';
+  });
+
+  updateRecurringPaymentFields();
+}
+
+function updateRecurringPaymentFields(){
+  const payment=$('#recPayment');
+  const wrap=$('#recCardWrap');
+  const card=$('#recCard');
+  if(!payment || !wrap || !card) return;
+
+  const isCredit=payment.value==='Cartão de crédito';
+  wrap.hidden=!isCredit;
+  card.required=isCredit;
+
+  if(!isCredit){
+    card.value='';
+    return;
+  }
+
+  if(!appState || !appState.cards.length){
+    card.innerHTML='<option value="">Cadastre um cartão primeiro</option>';
+  }
 }
 
 function updateInstallmentFields(editing){

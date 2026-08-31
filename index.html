@@ -359,6 +359,16 @@
           <div id="familyRoleBadge" class="family-role-badge">Sem família</div>
         </div>
 
+        <article id="familyLoadErrorPanel" class="panel family-load-error" hidden>
+          <div class="family-load-error-icon">!</div>
+          <div class="grow">
+            <span class="eyebrow">VÍNCULO FAMILIAR</span>
+            <h3>Não foi possível carregar sua família</h3>
+            <p id="familyLoadErrorText" class="muted">O vínculo existe, mas o Firestore não permitiu carregá-lo.</p>
+          </div>
+          <button id="retryFamilyBtn" class="btn soft" type="button"><svg class="btn-icon"><use href="#i-refresh"/></svg>Tentar novamente</button>
+        </article>
+
         <article id="familyNotificationsPanel" class="panel family-notifications" hidden>
           <div class="panel-head">
             <div><span class="eyebrow">CONVITES</span><h3>Solicitações para participar de uma família</h3></div>

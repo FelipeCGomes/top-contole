@@ -3473,11 +3473,15 @@ async function forceCloudSync(showToast=true){
     }
 
     try{
+      let usedLegacyFallback=false;
+
       if(cloudSyncPending && appState){
         const result=await queueCloudPush(clone(appState),{
           force:true,
           sections:changedStateSections(appState)
         });
+
+        usedLegacyFallback=!!result?.fallbackLegacy;
 
         if(result?.synced===false && result?.error){
           throw new Error(result.error.message || 'Não foi possível enviar as alterações.');
@@ -3485,6 +3489,7 @@ async function forceCloudSync(showToast=true){
       }
 
       const remote=await cloud.pullStateFromServer();
+      usedLegacyFallback=usedLegacyFallback || !!remote?.legacy;
 
       if(remote?.state){
         if(!cloudSyncPending){
@@ -3504,18 +3509,33 @@ async function forceCloudSync(showToast=true){
 
       await refreshFamilyData();
       cloudLastSyncedAt=new Date();
-      setCloudStatus(
-        cloudSyncPending?'syncing':'synced',
-        cloudSyncPending?'Ainda existem alterações pendentes':'Firestore sincronizado e confirmado'
-      );
+
+      if(usedLegacyFallback && !cloudSyncPending){
+        setCloudStatus(
+          'synced',
+          'Dados no Firestore legado · publique as regras para migrar users/{uid}/data/*'
+        );
+      }else{
+        setCloudStatus(
+          cloudSyncPending?'syncing':'synced',
+          cloudSyncPending?'Ainda existem alterações pendentes':'Firestore modular sincronizado e confirmado'
+        );
+      }
 
       if(showToast){
-        toast(
-          cloudSyncPending
-            ? 'Há novas alterações aguardando a próxima sincronização.'
-            : 'Dados confirmados no Firestore.',
-          cloudSyncPending?'info':'success'
-        );
+        if(usedLegacyFallback && !cloudSyncPending){
+          toast(
+            'Dados salvos no Firestore em state/main. Publique o firestore.rules atualizado para concluir a migração modular.',
+            'info'
+          );
+        }else{
+          toast(
+            cloudSyncPending
+              ? 'Há novas alterações aguardando a próxima sincronização.'
+              : 'Dados modulares confirmados no Firestore.',
+            cloudSyncPending?'info':'success'
+          );
+        }
       }
     }catch(err){
       console.error('Stop Gastos manual sync:',err);

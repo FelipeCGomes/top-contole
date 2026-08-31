@@ -175,6 +175,36 @@ service cloud.firestore {
           || request.auth.uid == userId
         );
       }
+      
+      match /shoppingLists/{listId} {
+        allow read: if memberOf(familyId);
+
+        allow create: if memberOf(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow update: if memberOf(familyId)
+          && request.resource.data.familyId == familyId
+          && request.resource.data.createdBy == resource.data.createdBy;
+
+        allow delete: if adminOf(familyId)
+          || (
+            memberOf(familyId)
+            && resource.data.createdBy == request.auth.uid
+          );
+
+        match /items/{itemId} {
+          allow read: if memberOf(familyId);
+
+          allow create: if memberOf(familyId)
+            && request.resource.data.createdBy == request.auth.uid;
+
+          allow update: if memberOf(familyId)
+            && request.resource.data.createdBy == resource.data.createdBy;
+
+          allow delete: if memberOf(familyId);
+        }
+      }
     }
 
     match /familyRequests/{requestId} {

@@ -2682,6 +2682,49 @@ function replaceTransactionInstallmentPlan(existing,base,total,count,card){
   return records;
 }
 
+
+function syncSourceFromTransactionEdit(existing,base,total,requestedInstallments){
+  if(!existing || !existing.sourceRecurringId || !appState) return null;
+
+  const recurring=appState.recurring.find(function(item){
+    return item.id===existing.sourceRecurringId;
+  });
+
+  if(recurring){
+    recurring.type='expense';
+    recurring.description=base.description;
+    recurring.amount=Number(total);
+    recurring.day=Math.max(1,Math.min(31,Number(String(base.purchaseDate || base.date || '').slice(8,10) || recurring.day || 1)));
+    recurring.category=base.category;
+    recurring.payment=base.payment;
+    recurring.cardId=paymentUsesCard(base.payment) ? (base.cardId || '') : '';
+    recurring.installmentCount=base.payment==='Cartão de crédito'
+      ? normalizedInstallmentCount(requestedInstallments)
+      : 1;
+    recurring.updatedAt=new Date().toISOString();
+
+    existing.sourceType='recurringExpense';
+    return {type:'recurring',record:recurring};
+  }
+
+  const income=appState.incomeSources.find(function(item){
+    return item.id===existing.sourceRecurringId;
+  });
+
+  if(income){
+    income.description=base.description;
+    income.amount=Number(total);
+    income.day=Math.max(1,Math.min(31,Number(String(base.purchaseDate || base.date || '').slice(8,10) || income.day || 1)));
+    income.accountId=base.accountId || '';
+    income.updatedAt=new Date().toISOString();
+
+    existing.sourceType='incomeSource';
+    return {type:'income',record:income};
+  }
+
+  return null;
+}
+
 async function saveTransactionForm(e){
   return withLoading('Salvando lançamento…','Atualizando seus dados financeiros.',async function(){
     e.preventDefault();
@@ -2740,18 +2783,12 @@ async function saveTransactionForm(e){
     if(existing){
       const previousCount=normalizedInstallmentCount(existing.installmentCount || 1);
 
-      if(existing.sourceRecurringId && existing.sourceType==='recurringExpense'){
-        const sourceRecurring=appState.recurring.find(function(r){
-          return r.id===existing.sourceRecurringId;
-        });
-
-        if(sourceRecurring){
-          sourceRecurring.payment=payment;
-          sourceRecurring.cardId=usesCard ? cardId : '';
-          sourceRecurring.installmentCount=isCredit ? requestedInstallments : 1;
-          sourceRecurring.updatedAt=new Date().toISOString();
-        }
-      }
+      const sourceSync=syncSourceFromTransactionEdit(
+        existing,
+        base,
+        total,
+        requestedInstallments
+      );
 
       const records=replaceTransactionInstallmentPlan(
         existing,
@@ -2769,10 +2806,15 @@ async function saveTransactionForm(e){
       await commitStateChange();
 
       if(isCredit){
+        const sourceNote=sourceSync?.type==='recurring'
+          ? ' O Custo Fixo vinculado também foi atualizado.'
+          : '';
         toast(
-          previousCount===requestedInstallments
-            ? 'Compra atualizada em '+requestedInstallments+'x.'
-            : 'Parcelamento recalculado de '+previousCount+'x para '+requestedInstallments+'x.',
+          (
+            previousCount===requestedInstallments
+              ? 'Compra atualizada em '+requestedInstallments+'x.'
+              : 'Parcelamento recalculado de '+previousCount+'x para '+requestedInstallments+'x.'
+          )+sourceNote,
           'success'
         );
       }else{
@@ -5296,7 +5338,7 @@ function updateRecurringPaymentFields(){
 
   preview.textContent=count===1
     ? 'À vista · '+money(total)+due
-    : count+'x de '+money(each)+' · total '+money(total)+due+' · novas parcelas são geradas a cada recorrência mensal';
+    : count+'x de '+money(each)+' · total '+money(total)+due+' · parcelas distribuídas nas próximas faturas';
 }
 
 function updateInstallmentFields(editing){

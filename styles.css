@@ -1447,7 +1447,7 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   min-width:0;
   min-height:112px;
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(180px,260px);
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
   align-items:center;
   gap:14px 18px;
   padding:16px;
@@ -1548,6 +1548,147 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .category-manage-row small{font-size:7px;color:var(--muted)}
 .danger-zone{border-color:rgba(255,95,109,.18)}
 
+
+
+/* Recurring income settings */
+.income-settings-section{
+  background:
+    linear-gradient(135deg,rgba(41,211,159,.05),transparent 44%),
+    var(--surface-2);
+}
+.income-settings-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 13px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface);
+}
+.income-settings-toolbar>div{min-width:0}
+.income-settings-toolbar strong,
+.income-settings-toolbar span{display:block}
+.income-settings-toolbar strong{font-size:11px}
+.income-settings-toolbar span{margin-top:3px;color:var(--muted);font-size:8px}
+.income-source-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));
+  gap:10px;
+}
+.income-source-card{
+  min-width:0;
+  min-height:175px;
+  padding:14px;
+  display:grid;
+  align-content:start;
+  gap:7px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--surface);
+  box-shadow:var(--shadow-soft);
+  transition:transform .2s var(--ease),border-color .2s ease,box-shadow .2s ease,opacity .2s ease;
+}
+.income-source-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(41,211,159,.28);
+  box-shadow:0 12px 28px rgba(10,18,35,.12);
+}
+.income-source-card.inactive{opacity:.58}
+.income-source-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.income-source-icon{
+  width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  background:rgba(41,211,159,.10);font-size:18px
+}
+.income-source-kind{
+  width:max-content;
+  max-width:100%;
+  padding:3px 6px;
+  border-radius:999px;
+  color:var(--income);
+  background:rgba(41,211,159,.08);
+  font-size:7px;
+  font-weight:850;
+  text-transform:uppercase;
+}
+.income-source-card h4{margin:1px 0 0;font-size:13px}
+.income-source-card>strong{font-size:19px;color:var(--income);letter-spacing:-.3px}
+.income-source-meta{display:grid;gap:3px;color:var(--muted);font-size:8px}
+.income-source-bottom{
+  margin-top:auto;
+  padding-top:9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border-top:1px solid var(--line);
+}
+.income-source-empty{margin:0}
+.income-source-empty[hidden]{display:none!important}
+
+.modal-info{
+  display:grid;
+  gap:4px;
+  padding:10px 11px;
+  border:1px solid rgba(123,97,255,.18);
+  border-radius:11px;
+  background:rgba(123,97,255,.045);
+}
+.modal-info strong{font-size:9px}
+.modal-info span{color:var(--muted);font-size:8px;line-height:1.5}
+
+/* Benefit cards */
+.credit-card.benefit-card{
+  background:
+    linear-gradient(135deg,rgba(22,199,183,.10),transparent 60%),
+    var(--surface);
+}
+.credit-card.benefit-card .progress i{
+  background:linear-gradient(90deg,var(--accent),var(--income));
+}
+.credit-fields.benefit-mode>label:nth-child(2){display:none}
+.credit-fields.benefit-mode .installment-preview{grid-column:1/-1}
+
+/* Motion system */
+@keyframes surfaceEnter{
+  from{opacity:0;transform:translateY(10px) scale(.992)}
+  to{opacity:1;transform:none}
+}
+@keyframes softPop{
+  0%{transform:scale(.985);opacity:.75}
+  100%{transform:scale(1);opacity:1}
+}
+@keyframes glowPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(123,97,255,0)}
+  50%{box-shadow:0 0 0 5px rgba(123,97,255,.08)}
+}
+.view.active .panel,
+.view.active .kpi-card,
+.view.active .rec-card,
+.view.active .finance-card,
+.view.active .credit-card,
+.view.active .bill-card,
+.view.active .goal-card,
+.view.active .income-source-card{
+  animation:surfaceEnter .34s var(--ease) both;
+}
+.view.active .kpi-grid>*:nth-child(2),
+.view.active .summary-chips>*:nth-child(2){animation-delay:.035s}
+.view.active .kpi-grid>*:nth-child(3),
+.view.active .summary-chips>*:nth-child(3){animation-delay:.07s}
+.view.active .kpi-grid>*:nth-child(4),
+.view.active .summary-chips>*:nth-child(4){animation-delay:.105s}
+.nav-item,.mobile-nav button{
+  transition:transform .18s var(--ease),background .18s ease,color .18s ease,border-color .18s ease;
+}
+.nav-item:hover{transform:translateX(3px)}
+.nav-item.active{animation:softPop .2s var(--ease)}
+.modal-backdrop:not([hidden]) .modal{animation:surfaceEnter .22s var(--ease)}
+.settings-save-status.pending{animation:glowPulse 1.4s ease-in-out infinite}
+.summary-chips>div,.settings-section,.section-toolbar{
+  transition:border-color .2s ease,box-shadow .2s ease,transform .2s var(--ease);
+}
+.settings-section:hover{border-color:var(--line-strong)}
 
 /* Legal, account and loading */
 .settings-svg{
@@ -1876,8 +2017,10 @@ body.is-loading{cursor:wait}
   }
   .settings-grid-compact .category-settings,.settings-grid-compact .legal-settings{grid-column:1}
   .settings-card{
-    grid-template-columns:minmax(0,1fr) minmax(180px,240px);
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));
   }
+  .income-settings-toolbar{align-items:stretch}
+
   .card-grid,.goal-grid,.insight-grid,
   #recurringGrid,#accountsGrid,#cardsGrid{
     grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));
@@ -1990,6 +2133,9 @@ body.is-loading{cursor:wait}
     max-width:none;
   }
   .settings-card>select{width:100%}
+  .income-settings-toolbar{align-items:stretch;flex-direction:column}
+  .income-settings-toolbar .btn{width:100%}
+  .income-source-grid{grid-template-columns:1fr}
   .settings-control-stack{width:100%}
   .panel{padding:14px;border-radius:15px}
   .budget-ring-wrap,.donut-wrap{align-items:flex-start}

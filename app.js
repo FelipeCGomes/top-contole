@@ -151,9 +151,18 @@ function waitForCloudReady(timeoutMs=8000){
 
 async function withLoading(title,message,task){
   showLoading(title,message);
+  const started=performance.now();
+
   try{
     return await task();
   }finally{
+    const elapsed=performance.now()-started;
+    const minimum=320;
+    if(elapsed<minimum){
+      await new Promise(function(resolve){
+        setTimeout(resolve,minimum-elapsed);
+      });
+    }
     hideLoading();
   }
 }

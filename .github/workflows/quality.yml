@@ -42,6 +42,48 @@ jobs:
           }
           console.log('DOM bindings OK:', new Set(ids).size, 'ids checked');
           NODE
+      - name: Validate application bootstrap and auth wiring
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('app.js','utf8');
+          const sync = fs.readFileSync('firebase-sync.js','utf8');
+          const html = fs.readFileSync('index.html','utf8');
+
+          const appFns = [...app.matchAll(/(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]);
+          const duplicateAppFns = [...new Set(appFns)].filter(name => appFns.filter(x=>x===name).length>1);
+          if (duplicateAppFns.length) {
+            console.error('Duplicate app functions:', duplicateAppFns);
+            process.exit(1);
+          }
+
+          const htmlIds = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+          const duplicateIds = [...new Set(htmlIds)].filter(id => htmlIds.filter(x=>x===id).length>1);
+          if (duplicateIds.length) {
+            console.error('Duplicate HTML ids:', duplicateIds);
+            process.exit(1);
+          }
+
+          const checks = [
+            ['bootstrapApp exists', /function\s+bootstrapApp\s*\(/.test(app)],
+            ['DOMContentLoaded bootstrap exists', /DOMContentLoaded/.test(app)],
+            ['bootstrap invokes init', /Promise\.resolve\(init\(\)\)/.test(app)],
+            ['Google login button exists', html.includes('id="googleLoginBtn"')],
+            ['cloud login handler exists', /async\s+function\s+cloudSignIn\s*\(/.test(app)],
+            ['cloud events bind Google login', /googleLoginBtn[\s\S]{0,700}cloudSignIn/.test(app)],
+            ['Firebase exports signInGoogle', /\bsignInGoogle\s*,/.test(sync)],
+            ['Firebase uses popup login', /signInWithPopup\(auth,provider\)/.test(sync)]
+          ];
+
+          const failed = checks.filter(([,ok])=>!ok).map(([name])=>name);
+          if (failed.length) {
+            console.error('Bootstrap/auth wiring failed:', failed);
+            process.exit(1);
+          }
+
+          console.log('Application bootstrap and auth wiring OK');
+          NODE
+
       - name: Check UI helper consistency
         run: |
           node - <<'NODE'

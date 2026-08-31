@@ -2565,80 +2565,130 @@ function closeModal(){
 }
 
 async function saveTransactionForm(e){
-  return withLoading("Salvando lançamento…","Atualizando seus dados financeiros.",async function(){
-  e.preventDefault();
-  const id = $('#transactionId').value;
-  const existing = id ? appState.transactions.find(function(t){return t.id===id;}) : null;
-  const type = getRadio('txType');
-  const payment = $('#txPayment').value;
-  const total = Number($('#txAmount').value);
-  const purchaseDate = $('#txDate').value;
-  const cardId = $('#txCard').value || '';
-  const requestedInstallments = Math.max(1,Math.min(60,Number($('#txInstallments').value || 1)));
-  const base = {
-    type:type,
-    description:$('#txDescription').value.trim(),
-    date:purchaseDate,
-    purchaseDate:purchaseDate,
-    category:$('#txCategory').value,
-    payment:payment,
-    accountId:$('#txAccount').value || '',
-    cardId:payment==='Cartão de crédito' ? cardId : '',
-    tags:$('#txTags').value.trim(),
-    notes:$('#txNotes').value.trim(),
-    updatedAt:new Date().toISOString()
-  };
-  if(!base.description || !purchaseDate || !(total>0)) return toast('Preencha descrição, valor e data.','error');
+  return withLoading('Salvando lançamento…','Atualizando seus dados financeiros.',async function(){
+    e.preventDefault();
 
-  if(existing){
-    const record=Object.assign({},existing,base,{amount:total});
-    appState.transactions[appState.transactions.findIndex(function(t){return t.id===id;})]=record;
-    logAudit('transaction-update',record.description);
-    await commitStateChange(); toast('Lançamento atualizado.','success'); return;
-  }
+    const id=$('#transactionId').value;
+    const existing=id ? appState.transactions.find(function(t){return t.id===id;}) : null;
+    const type=getRadio('txType');
+    const payment=$('#txPayment').value;
+    const total=Number($('#txAmount').value);
+    const purchaseDate=$('#txDate').value;
+    const cardId=$('#txCard').value || '';
+    const usesCard=type==='expense' && paymentUsesCard(payment);
+    const isCredit=payment==='Cartão de crédito';
+    const requestedInstallments=isCredit
+      ? Math.max(1,Math.min(60,Number($('#txInstallments').value || 1)))
+      : 1;
 
-  if(type==='expense' && payment==='Cartão de crédito' && requestedInstallments>1 && !cardId){
-    return toast('Selecione um cartão para criar o parcelamento.','error');
-  }
-
-  if(type==='expense' && payment==='Cartão de crédito' && cardId){
-    const card=getCard(cardId);
-    if(!card) return toast('Cartão não encontrado.','error');
-    const group=uid('inst');
-    const count=requestedInstallments;
-    const regular=Math.floor((total/count)*100)/100;
-    let allocated=0;
-    const firstMonth=cardInvoiceMonth(purchaseDate,card);
-    for(let i=1;i<=count;i++){
-      const amount=i===count ? Math.round((total-allocated)*100)/100 : regular;
-      allocated=Math.round((allocated+amount)*100)/100;
-      const invoiceMonth=shiftMonth(firstMonth,i-1);
-      const due=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
-      appState.transactions.push(Object.assign({},base,{
-        id:uid('tx'),
-        amount:amount,
-        date:due,
-        invoiceMonth:invoiceMonth,
-        purchaseTotal:total,
-        installmentGroup:group,
-        installmentNo:i,
-        installmentCount:count,
-        installmentAmount:amount,
-        createdAt:new Date().toISOString()
-      }));
+    if(usesCard){
+      const card=getCard(cardId);
+      if(!card){
+        toast('Selecione o cartão ou benefício usado neste lançamento.','error');
+        return;
+      }
+      if(!cardMatchesPayment(card,payment)){
+        toast('O cartão selecionado não corresponde ao meio de pagamento.','error');
+        return;
+      }
     }
-    logAudit('installment-create',base.description+' · '+count+'x · '+money(total));
+
+    const base={
+      type,
+      description:$('#txDescription').value.trim(),
+      date:purchaseDate,
+      purchaseDate,
+      category:$('#txCategory').value,
+      payment,
+      accountId:$('#txAccount').value || '',
+      cardId:usesCard ? cardId : '',
+      tags:$('#txTags').value.trim(),
+      notes:$('#txNotes').value.trim(),
+      updatedAt:new Date().toISOString()
+    };
+
+    if(!base.description || !purchaseDate || !(total>0)){
+      toast('Preencha descrição, valor e data.','error');
+      return;
+    }
+
+    if(existing){
+      const record=Object.assign({},existing,base,{amount:total});
+
+      if(usesCard){
+        const card=getCard(cardId);
+        record.invoiceMonth=isBenefitCard(card)
+          ? purchaseDate.slice(0,7)
+          : cardInvoiceMonth(purchaseDate,card);
+      }else{
+        record.invoiceMonth='';
+      }
+
+      appState.transactions[appState.transactions.findIndex(function(t){return t.id===id;})]=record;
+      logAudit('transaction-update',record.description);
+      await commitStateChange();
+      toast('Lançamento atualizado.','success');
+      return;
+    }
+
+    if(type==='expense' && isCredit && requestedInstallments>1){
+      if(!cardId){
+        toast('Selecione um cartão para criar o parcelamento.','error');
+        return;
+      }
+
+      const card=getCard(cardId);
+      if(!card || isBenefitCard(card)){
+        toast('Parcelamento está disponível somente para cartão de crédito.','error');
+        return;
+      }
+
+      const group=uid('inst');
+      const count=requestedInstallments;
+      const regular=Math.floor((total/count)*100)/100;
+      let allocated=0;
+      const firstMonth=cardInvoiceMonth(purchaseDate,card);
+
+      for(let i=1;i<=count;i++){
+        const amount=i===count ? Math.round((total-allocated)*100)/100 : regular;
+        allocated=Math.round((allocated+amount)*100)/100;
+        const invoiceMonth=shiftMonth(firstMonth,i-1);
+        const due=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
+
+        appState.transactions.push(Object.assign({},base,{
+          id:uid('tx'),
+          amount,
+          date:due,
+          invoiceMonth,
+          purchaseTotal:total,
+          installmentGroup:group,
+          installmentNo:i,
+          installmentCount:count,
+          installmentAmount:amount,
+          createdAt:new Date().toISOString()
+        }));
+      }
+
+      logAudit('installment-create',base.description+' · '+count+'x · '+money(total));
+      await commitStateChange();
+      toast(count+'x de aproximadamente '+money(total/count)+' criadas. Total: '+money(total)+'.','success');
+      return;
+    }
+
+    const card=usesCard ? getCard(cardId) : null;
+    const record=Object.assign({},base,{
+      id:uid('tx'),
+      amount:total,
+      invoiceMonth:card
+        ? (isBenefitCard(card) ? purchaseDate.slice(0,7) : cardInvoiceMonth(purchaseDate,card))
+        : '',
+      createdAt:new Date().toISOString()
+    });
+
+    appState.transactions.push(record);
+    logAudit('transaction-create',record.description);
     await commitStateChange();
-    toast(count+'x de aproximadamente '+money(total/count)+' criadas. Total: '+money(total)+'.','success');
-    return;
-  }
-
-  const record=Object.assign({},base,{id:uid('tx'),amount:total,createdAt:new Date().toISOString()});
-  appState.transactions.push(record);
-  logAudit('transaction-create',record.description);
-  await commitStateChange();
-  toast('Lançamento salvo.','success');
-
+    toast('Lançamento salvo.','success');
   });
 }
 
@@ -2648,15 +2698,17 @@ async function saveRecurringForm(e){
 
     const id=$('#recurringId').value;
     const payment=$('#recPayment').value;
-    const cardId=payment==='Cartão de crédito' ? ($('#recCard').value || '') : '';
+    const usesCard=paymentUsesCard(payment);
+    const cardId=usesCard ? ($('#recCard').value || '') : '';
 
-    if(payment==='Cartão de crédito'){
-      if(!appState.cards.length){
-        toast('Cadastre um cartão antes de vincular um custo fixo ao crédito.','error');
+    if(usesCard){
+      const card=getCard(cardId);
+      if(!card){
+        toast('Selecione o cartão ou benefício usado neste custo fixo.','error');
         return;
       }
-      if(!cardId || !getCard(cardId)){
-        toast('Selecione o cartão que receberá este custo fixo.','error');
+      if(!cardMatchesPayment(card,payment)){
+        toast('O cartão selecionado não corresponde ao meio de pagamento.','error');
         return;
       }
     }
@@ -2688,8 +2740,8 @@ async function saveRecurringForm(e){
     }
 
     syncRecurringTransactionForMonth(record,selectedMonth);
-
     logAudit(index>=0?'recurring-update':'recurring-create',record.description);
+
     await commitStateChange();
     toast(index>=0?'Custo fixo atualizado.':'Custo fixo criado.','success');
   });
@@ -2795,17 +2847,22 @@ function ensureRecurringForMonth(monthKey){
 function recurringTransactionData(recurring,monthKey){
   const chargeDate=localDateKey(safeMonthDate(monthKey,Number(recurring.day || 1)));
   const isIncome=recurring.type==='income';
-  const isCredit=!isIncome && recurring.payment==='Cartão de crédito' && recurring.cardId;
-  const card=isCredit ? getCard(recurring.cardId) : null;
+  const usesCard=!isIncome && paymentUsesCard(recurring.payment) && recurring.cardId;
+  const card=usesCard ? getCard(recurring.cardId) : null;
 
   let date=chargeDate;
   let invoiceMonth='';
   let cardId='';
 
   if(card){
-    invoiceMonth=cardInvoiceMonth(chargeDate,card);
-    date=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
     cardId=card.id;
+
+    if(isBenefitCard(card)){
+      invoiceMonth=chargeDate.slice(0,7);
+    }else{
+      invoiceMonth=cardInvoiceMonth(chargeDate,card);
+      date=localDateKey(safeMonthDate(invoiceMonth,Number(card.dueDay || 10)));
+    }
   }
 
   return {
@@ -2835,8 +2892,14 @@ function syncRecurringTransactionForMonth(recurring,monthKey){
   if(!appState || !recurring || recurring.active===false) return null;
 
   const data=recurringTransactionData(recurring,monthKey);
+
   const existing=appState.transactions.find(function(t){
-    return t.recurrenceKey===data.recurrenceKey;
+    if(t.recurrenceKey===data.recurrenceKey) return true;
+
+    // Compatibilidade com lançamentos automáticos criados antes da separação
+    // entre custos fixos e rendas recorrentes.
+    return t.sourceRecurringId===recurring.id
+      && String(t.purchaseDate || t.date || '').slice(0,7)===monthKey;
   });
 
   if(existing){
@@ -2848,10 +2911,10 @@ function syncRecurringTransactionForMonth(recurring,monthKey){
     id:uid('tx'),
     createdAt:new Date().toISOString()
   });
+
   appState.transactions.push(created);
   return created;
 }
-
 
 async function loadDemoData(){
   const ok = await confirmDialog('Carregar dados de demonstração?','Serão adicionados exemplos de receitas, despesas, recorrências, orçamentos e metas ao cofre atual.');

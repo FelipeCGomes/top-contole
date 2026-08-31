@@ -45,7 +45,7 @@ const required = ['apiKey','authDomain','projectId','messagingSenderId','appId']
 const configured = required.every(key => String(cfg[key] || '').trim());
 const authObservers = new Set();
 
-const STATE_SCHEMA_VERSION = 2;
+const STATE_SCHEMA_VERSION = 3;
 const STATE_SECTIONS = [
   'categories',
   'transactions',

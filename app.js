@@ -35,6 +35,9 @@ let familyShoppingLists = [];
 let familyShoppingListsUnsubscribe = null;
 let familyShoppingItemsUnsubscribe = null;
 let familyShoppingItemsListId = '';
+let familyShoppingComparisonLists = [];
+let familyShoppingComparisonLoading = false;
+let familyShoppingComparisonRefreshTimer = null;
 let familyLoadError = '';
 let notifiedFamilyInvites = new Set();
 
@@ -519,6 +522,7 @@ function bindEvents(){
   $('#deleteShoppingListBtn').addEventListener('click', deleteActiveShoppingList);
   $('#shoppingGridBody').addEventListener('input', handleShoppingGridInput);
   $('#shoppingGridBody').addEventListener('click', handleShoppingGridClick);
+  $('#refreshShoppingComparisonBtn').addEventListener('click', refreshShoppingComparisonFromUi);
 
   $('#transactionSearch').addEventListener('input', renderTransactions);
   $('#transactionTypeFilter').addEventListener('change', renderTransactions);
@@ -1142,6 +1146,13 @@ function clearFamilyShoppingWatchers(){
   }
   familyShoppingItemsListId='';
   familyShoppingLists=[];
+  familyShoppingComparisonLists=[];
+  familyShoppingComparisonLoading=false;
+  if(familyShoppingComparisonRefreshTimer){
+    clearTimeout(familyShoppingComparisonRefreshTimer);
+    familyShoppingComparisonRefreshTimer=null;
+  }
+  renderShoppingComparison();
 }
 
 function setupFamilyShoppingWatchers(cloud){
@@ -1172,6 +1183,7 @@ function setupFamilyShoppingWatchers(cloud){
 
     setupFamilyShoppingItemsWatcher(cloud);
     renderShoppingLists();
+    scheduleFamilyShoppingComparisonRefresh();
   });
 }
 
@@ -1212,14 +1224,309 @@ function setupFamilyShoppingItemsWatcher(cloud){
       });
 
       target.items=incoming;
+      updateFamilyShoppingComparisonCache(target);
 
       if(changed){
         renderShoppingLists();
       }else{
         renderShoppingSummary(target);
+        renderShoppingComparison();
       }
     }
   );
+}
+
+
+function shoppingMarketLabel(list){
+  const store=String(list?.store || '').trim();
+  const name=String(list?.name || '').trim();
+  return store || name || 'Mercado';
+}
+
+function shoppingProductKey(value){
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/×/g,'x')
+    .replace(/([0-9])\s*(kg|ml|g|l|unid)\b/g,'$1 $2')
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim()
+    .replace(/\s+/g,' ');
+}
+
+function shoppingComparisonListsSource(){
+  if(!shoppingIsFamilyShared()){
+    return appState?.shoppingLists || [];
+  }
+  return familyShoppingComparisonLists || [];
+}
+
+function shoppingPricedMap(list){
+  const map=new Map();
+
+  (list?.items || []).forEach(function(item){
+    const price=Math.max(0,Number(item.unitPrice || 0));
+    const key=shoppingProductKey(item.product);
+    if(!key || !(price>0)) return;
+
+    const previous=map.get(key);
+    if(!previous || price<previous.price){
+      map.set(key,{
+        key,
+        product:String(item.product || '').trim(),
+        price,
+        qty:Math.max(0,Number(item.qty || 0))
+      });
+    }
+  });
+
+  return map;
+}
+
+function shoppingComparisonModel(lists){
+  const markets=(lists || [])
+    .map(function(list){
+      const priced=shoppingPricedMap(list);
+      const totals=shoppingListTotals(list);
+      return {
+        id:list.id,
+        label:shoppingMarketLabel(list),
+        name:list.name || shoppingMarketLabel(list),
+        store:list.store || '',
+        list,
+        priced,
+        total:totals.total,
+        pricedProducts:totals.pricedProducts,
+        products:totals.products
+      };
+    })
+    .filter(function(market){
+      return market.priced.size>0;
+    });
+
+  const productBuckets=new Map();
+  markets.forEach(function(market){
+    market.priced.forEach(function(entry,key){
+      if(!productBuckets.has(key)) productBuckets.set(key,[]);
+      productBuckets.get(key).push({
+        marketId:market.id,
+        market:market.label,
+        product:entry.product,
+        price:entry.price
+      });
+    });
+  });
+
+  const productRows=[...productBuckets.entries()]
+    .filter(function(entry){return entry[1].length>=2;})
+    .map(function(entry){
+      const key=entry[0];
+      const prices=entry[1].slice().sort(function(a,b){return a.price-b.price;});
+      const best=prices[0];
+      const worst=prices[prices.length-1];
+      return {
+        key,
+        product:best.product,
+        bestMarket:best.market,
+        min:best.price,
+        max:worst.price,
+        savings:Math.max(0,worst.price-best.price),
+        prices
+      };
+    })
+    .sort(function(a,b){
+      return b.savings-a.savings || a.product.localeCompare(b.product,'pt-BR');
+    });
+
+  let commonKeys=[];
+  if(markets.length>=2){
+    commonKeys=[...markets[0].priced.keys()].filter(function(key){
+      return markets.every(function(market){return market.priced.has(key);});
+    });
+  }
+
+  const ranking=markets.map(function(market){
+    const comparable=commonKeys.reduce(function(sum,key){
+      return sum+(market.priced.get(key)?.price || 0);
+    },0);
+    return {...market,comparable};
+  }).sort(function(a,b){
+    return a.comparable-b.comparable || a.label.localeCompare(b.label,'pt-BR');
+  });
+
+  const validRanking=markets.length>=2 && commonKeys.length>0 ? ranking : [];
+  const best=validRanking[0] || null;
+  const worst=validRanking.length ? validRanking[validRanking.length-1] : null;
+  const savings=best && worst ? Math.max(0,worst.comparable-best.comparable) : 0;
+
+  const idealSplit=commonKeys.reduce(function(sum,key){
+    const min=Math.min(...markets.map(function(market){
+      return market.priced.get(key)?.price ?? Number.POSITIVE_INFINITY;
+    }));
+    return sum+(Number.isFinite(min)?min:0);
+  },0);
+
+  const splitSavings=best ? Math.max(0,best.comparable-idealSplit) : 0;
+
+  return {
+    markets,
+    productRows,
+    commonKeys,
+    ranking:validRanking,
+    best,
+    worst,
+    savings,
+    idealSplit,
+    splitSavings
+  };
+}
+
+function updateFamilyShoppingComparisonCache(list){
+  if(!shoppingIsFamilyShared() || !list) return;
+
+  const index=familyShoppingComparisonLists.findIndex(function(x){
+    return x.id===list.id;
+  });
+  const copy=Object.assign({},list,{items:clone(list.items || [])});
+
+  if(index>=0){
+    familyShoppingComparisonLists[index]=copy;
+  }else{
+    familyShoppingComparisonLists.push(copy);
+  }
+}
+
+function scheduleFamilyShoppingComparisonRefresh(){
+  if(!shoppingIsFamilyShared()) return;
+
+  clearTimeout(familyShoppingComparisonRefreshTimer);
+  familyShoppingComparisonRefreshTimer=setTimeout(function(){
+    refreshFamilyShoppingComparison(true);
+  },520);
+}
+
+async function refreshFamilyShoppingComparison(silent=true){
+  if(!shoppingIsFamilyShared()) return;
+
+  const cloud=window.StopGastosCloud;
+  const familyId=familyContext?.family?.id;
+  if(!cloud || !cloud.ready || !familyId || familyShoppingComparisonLoading) return;
+
+  familyShoppingComparisonLoading=true;
+  renderShoppingComparison();
+
+  try{
+    familyShoppingComparisonLists=await cloud.getFamilyShoppingComparisonData(familyId);
+  }catch(err){
+    if(!silent){
+      toast(err.message || 'Não foi possível atualizar a comparação dos mercados.','error');
+    }
+  }finally{
+    familyShoppingComparisonLoading=false;
+    renderShoppingComparison();
+  }
+}
+
+async function refreshShoppingComparisonFromUi(){
+  if(shoppingIsFamilyShared()){
+    await withLoading(
+      'Comparando mercados…',
+      'Atualizando preços das listas compartilhadas.',
+      async function(){await refreshFamilyShoppingComparison(false);}
+    );
+  }else{
+    renderShoppingComparison();
+    toast('Comparação atualizada.','success');
+  }
+}
+
+function renderShoppingComparison(){
+  const panel=$('#shoppingComparisonPanel');
+  if(!panel) return;
+
+  const source=shoppingComparisonListsSource();
+  const visibleLists=(source || []).filter(function(list){
+    return Array.isArray(list.items);
+  });
+
+  panel.hidden=visibleLists.length<2;
+  if(panel.hidden) return;
+
+  const bars=$('#shoppingMarketBars');
+  const body=$('#shoppingProductCompareBody');
+  const preview=$('#shoppingBestItemsPreview');
+  const insight=$('#shoppingSplitInsight');
+
+  if(shoppingIsFamilyShared() && familyShoppingComparisonLoading && !familyShoppingComparisonLists.length){
+    $('#shoppingBestMarket').textContent='Atualizando…';
+    $('#shoppingBestMarketDetail').textContent='Carregando preços da família';
+    $('#shoppingBestBasket').textContent='—';
+    $('#shoppingMarketSavings').textContent='—';
+    $('#shoppingComparedProducts').textContent='—';
+    bars.innerHTML='<div class="shopping-compare-empty">Carregando comparação dos mercados…</div>';
+    body.innerHTML='<tr><td colspan="5" class="muted">Carregando preços compartilhados…</td></tr>';
+    preview.innerHTML='';
+    insight.textContent='Atualizando as listas compartilhadas.';
+    return;
+  }
+
+  const model=shoppingComparisonModel(visibleLists);
+
+  $('#shoppingBestMarket').textContent=model.best?.label || 'Sem cesta comum';
+  $('#shoppingBestMarketDetail').textContent=model.best
+    ? model.commonKeys.length+' produto'+(model.commonKeys.length===1?'':'s')+' na cesta equivalente'
+    : 'Preencha os mesmos produtos em pelo menos dois mercados';
+  $('#shoppingBestBasket').textContent=model.best ? money(model.best.comparable) : 'R$ 0,00';
+  $('#shoppingMarketSavings').textContent=money(model.savings);
+  $('#shoppingMarketSavingsDetail').textContent=model.best && model.worst
+    ? 'Economia de '+formatPct(model.worst.comparable>0 ? (model.savings/model.worst.comparable)*100 : 0)+' vs '+model.worst.label
+    : 'Diferença entre melhor e pior mercado';
+  $('#shoppingComparedProducts').textContent=String(model.commonKeys.length);
+  $('#shoppingComparedCoverage').textContent=model.markets.length>=2
+    ? model.markets.length+' mercados com preços informados'
+    : 'Cadastre preços em mais de uma lista';
+
+  if(model.ranking.length){
+    const max=Math.max(...model.ranking.map(function(m){return m.comparable;}),1);
+    bars.innerHTML=model.ranking.map(function(market,index){
+      const width=Math.max(8,(market.comparable/max)*100);
+      const totalInfo=market.total>0 ? 'Total informado: '+money(market.total) : 'Total da lista ainda incompleto';
+      return '<div class="shopping-market-bar '+(index===0?'best':'')+'">'+
+        '<div class="shopping-market-bar-head"><div><b>'+esc(market.label)+'</b><small>'+esc(totalInfo)+'</small></div><strong>'+money(market.comparable)+'</strong></div>'+
+        '<div class="shopping-market-track"><i style="width:'+width.toFixed(2)+'%"></i></div>'+
+        '<div class="shopping-market-bar-foot"><span>'+model.commonKeys.length+' itens comparáveis</span><span>'+market.pricedProducts+'/'+market.products+' preços preenchidos</span></div>'+
+      '</div>';
+    }).join('');
+  }else{
+    bars.innerHTML='<div class="shopping-compare-empty">Ainda não existe uma cesta equivalente. Cadastre os mesmos produtos e preços em dois ou mais mercados.</div>';
+  }
+
+  body.innerHTML=model.productRows.length
+    ? model.productRows.map(function(row){
+        return '<tr>'+
+          '<td><b>'+esc(row.product)+'</b><small>'+row.prices.length+' mercados comparados</small></td>'+
+          '<td><span class="shopping-best-market-pill">'+esc(row.bestMarket)+'</span></td>'+
+          '<td class="right income">'+money(row.min)+'</td>'+
+          '<td class="right">'+money(row.max)+'</td>'+
+          '<td class="right"><strong>'+money(row.savings)+'</strong></td>'+
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="5" class="muted">Informe o preço do mesmo produto em pelo menos duas listas para comparar.</td></tr>';
+
+  const topSavings=model.productRows.filter(function(row){return row.savings>0;}).slice(0,5);
+  preview.innerHTML=topSavings.map(function(row){
+    return '<div class="shopping-best-item"><div><b>'+esc(row.product)+'</b><small>'+esc(row.bestMarket)+'</small></div><div><strong>'+money(row.min)+'</strong><small>economiza '+money(row.savings)+'</small></div></div>';
+  }).join('');
+
+  if(model.best){
+    insight.innerHTML='Comprando cada produto da cesta comum onde ele está mais barato, o total seria <strong>'+money(model.idealSplit)+'</strong>.'+
+      (model.splitSavings>0
+        ? ' Isso economiza <strong>'+money(model.splitSavings)+'</strong> em relação a fazer toda a cesta no melhor mercado único.'
+        : ' O melhor mercado já concentra os menores preços dessa cesta.');
+  }else{
+    insight.textContent='Informe preços dos mesmos produtos em pelo menos duas listas para calcular a melhor combinação.';
+  }
 }
 
 function getActiveShoppingList(){
@@ -1346,6 +1653,7 @@ function renderShoppingLists(){
     $('#shoppingAutosaveStatus').textContent=shared?'Sincronização em tempo real':'Salvamento automático';
     renderShoppingSummary(null);
     body.innerHTML='';
+    renderShoppingComparison();
     return;
   }
 
@@ -1399,6 +1707,7 @@ function renderShoppingLists(){
   }).join('');
 
   renderShoppingSummary(active);
+  renderShoppingComparison();
 }
 
 async function changeShoppingListSelection(e){
@@ -1431,6 +1740,7 @@ async function saveShoppingListForm(e){
       const created=await cloud.createFamilyShoppingList(name,store);
 
       familyShoppingLists.unshift(created);
+      familyShoppingComparisonLists.unshift(Object.assign({},created,{items:[]}));
       appState.shoppingActiveListId=created.id;
 
       setupFamilyShoppingItemsWatcher(cloud);
@@ -1520,6 +1830,7 @@ async function addShoppingItem(e){
   list.items.push(item);
   list.updatedAt=now;
 
+  if(shoppingIsFamilyShared()) updateFamilyShoppingComparisonCache(list);
   resetShoppingItemForm();
   renderShoppingLists();
 
@@ -1651,7 +1962,9 @@ function handleShoppingGridInput(e){
     );
   }
 
+  if(shoppingIsFamilyShared()) updateFamilyShoppingComparisonCache(list);
   renderShoppingSummary(list);
+  renderShoppingComparison();
   scheduleShoppingAutosave(item);
 }
 
@@ -1667,6 +1980,7 @@ async function handleShoppingGridClick(e){
   list.items=list.items.filter(function(x){return x.id!==id;});
   list.updatedAt=new Date().toISOString();
 
+  if(shoppingIsFamilyShared()) updateFamilyShoppingComparisonCache(list);
   renderShoppingLists();
 
   if(shoppingIsFamilyShared()){
@@ -1715,6 +2029,9 @@ async function deleteActiveShoppingList(){
       );
 
       familyShoppingLists=familyShoppingLists.filter(function(x){
+        return x.id!==list.id;
+      });
+      familyShoppingComparisonLists=familyShoppingComparisonLists.filter(function(x){
         return x.id!==list.id;
       });
       appState.shoppingActiveListId=familyShoppingLists[0]?.id || '';

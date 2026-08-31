@@ -108,15 +108,47 @@ async function withLoading(title,message,task){
   }
 }
 
-function openDeleteAccountDialog(){
+async function openDeleteAccountDialog(){
   if(!cloudUser){
     toast('Entre com Google para excluir sua conta.','info');
     return;
   }
+
+  const cloud=window.StopGastosCloud;
+  if(!cloud || !cloud.isSignedIn()){
+    toast('Sua sessão Google não está ativa.','error');
+    return;
+  }
+
+  try{
+    const status=await withLoading(
+      'Verificando sua conta…',
+      'Conferindo vínculos familiares antes da exclusão.',
+      function(){ return cloud.getAccountDeletionStatus(); }
+    );
+
+    if(status?.blocked){
+      const canTransfer=(status.transferCandidates || []).length>0;
+      navigate('family');
+
+      await confirmDialog(
+        'Antes de excluir sua conta',
+        canTransfer
+          ? 'Você é o proprietário da família e ainda existem outros vínculos. Remova todos os membros/convites ou use "Tornar administrador" em um membro ativo. Depois disso, tente excluir sua conta novamente.'
+          : 'Você é o proprietário da família e ainda existem vínculos pendentes ou recusados. Remova todos esses vínculos antes de excluir sua conta.'
+      );
+      return;
+    }
+  }catch(err){
+    toast(err.message || 'Não foi possível verificar sua conta.','error');
+    return;
+  }
+
   const modal=$('#deleteAccountBackdrop');
   const input=$('#deleteAccountConfirmInput');
   const button=$('#deleteAccountConfirmBtn');
   if(!modal || !input || !button) return;
+
   input.value='';
   button.disabled=true;
   modal.hidden=false;
@@ -146,28 +178,33 @@ async function deleteUserAccountFromUi(){
   }
 
   const uidToClear=cloudUser?.uid || '';
+
+  const clearLocalAccountData=function(){
+    if(uidToClear) localStorage.removeItem(STATE_KEY_PREFIX+uidToClear);
+    localStorage.removeItem(VAULT_KEY);
+    localStorage.removeItem('stop_gastos_device_id_v1');
+    clearSessionCredentials();
+
+    clearFamilyWatchers();
+    cloudUser=null;
+    appState=null;
+    familyContext=null;
+    familyStates={};
+    familyInvitations=[];
+    localStateUpdatedAt='';
+  };
+
+  const finishDeletion=async function(){
+    await cloud.deleteCurrentAccount();
+    updateLoading('Limpando este dispositivo…','Removendo dados locais e encerrando a sessão.');
+    clearLocalAccountData();
+  };
+
   try{
     await withLoading(
       'Excluindo sua conta…',
-      'Confirme sua identidade na janela do Google. Depois removeremos seus dados do Stop Gastos.',
-      async function(){
-        updateLoading('Confirmando sua identidade…','O Google pode solicitar que você escolha sua conta novamente.');
-        await cloud.deleteCurrentAccount();
-        updateLoading('Limpando este dispositivo…','Removendo dados locais e encerrando a sessão.');
-
-        if(uidToClear) localStorage.removeItem(STATE_KEY_PREFIX+uidToClear);
-        localStorage.removeItem(VAULT_KEY);
-        localStorage.removeItem('stop_gastos_device_id_v1');
-        clearSessionCredentials();
-
-        clearFamilyWatchers();
-        cloudUser=null;
-        appState=null;
-        familyContext=null;
-        familyStates={};
-        familyInvitations=[];
-        localStateUpdatedAt='';
-      }
+      'Validando vínculos e removendo seus dados do Stop Gastos.',
+      finishDeletion
     );
 
     closeDeleteAccountDialog();
@@ -176,18 +213,50 @@ async function deleteUserAccountFromUi(){
     toast('Sua conta e seus dados foram excluídos do Stop Gastos.','success');
   }catch(err){
     const code=err && err.code ? err.code : '';
-    let message=err && err.message ? err.message : 'Não foi possível excluir sua conta.';
-    if(code==='auth/popup-closed-by-user'){
-      message='A confirmação do Google foi cancelada. Nenhum dado foi excluído.';
-    }else if(code==='auth/requires-recent-login'){
-      message='O Google exige uma autenticação recente. Saia, entre novamente e tente excluir a conta.';
+
+    if(code==='family/owner-has-members'){
+      closeDeleteAccountDialog();
+      navigate('family');
+      toast('Remova os vínculos ou transfira a administração antes de excluir sua conta.','info');
+      return;
     }
-    toast(message,'error');
+
+    if(code==='auth/requires-delete-authorization'){
+      closeDeleteAccountDialog();
+
+      const ok=await confirmDialog(
+        'Autorizar exclusão da conta?',
+        'Sua sessão Google não é recente. Para proteger sua conta, confirme sua identidade antes da exclusão. A confirmação será feita para o mesmo e-mail que já está conectado.'
+      );
+      if(!ok) return;
+
+      try{
+        await withLoading(
+          'Autorizando exclusão…',
+          'Confirmando sua identidade Google para esta ação.',
+          async function(){
+            await cloud.authorizeAccountDeletion();
+            updateLoading('Excluindo sua conta…','Autorização confirmada. Removendo seus dados do Stop Gastos.');
+            await finishDeletion();
+          }
+        );
+
+        renderCloudUi();
+        showSignedOutScreen();
+        toast('Sua conta e seus dados foram excluídos do Stop Gastos.','success');
+      }catch(authErr){
+        const authCode=authErr && authErr.code ? authErr.code : '';
+        const message=authCode==='auth/popup-closed-by-user'
+          ? 'A autorização foi cancelada. Nenhum dado foi excluído.'
+          : (authErr.message || 'Não foi possível autorizar a exclusão.');
+        toast(message,'error');
+      }
+      return;
+    }
+
+    toast(err && err.message ? err.message : 'Não foi possível excluir sua conta.','error');
   }
 }
-
-
-document.addEventListener('DOMContentLoaded', init);
 
 async function init(){
   defaultsCache = await loadDefaults();
@@ -2064,9 +2133,16 @@ function bindFamilyEvents(){
   $('#leaveFamilyBtn').addEventListener('click',leaveFamilyFromUi);
 
   $('#familyMembersList').addEventListener('click',async function(e){
-    const btn=e.target.closest('[data-remove-member]');
-    if(!btn) return;
-    await removeFamilyMemberFromUi(btn.getAttribute('data-remove-member'));
+    const transferBtn=e.target.closest('[data-transfer-admin]');
+    if(transferBtn){
+      await transferFamilyAdminFromUi(transferBtn.getAttribute('data-transfer-admin'));
+      return;
+    }
+
+    const removeBtn=e.target.closest('[data-remove-member]');
+    if(removeBtn){
+      await removeFamilyMemberFromUi(removeBtn.getAttribute('data-remove-member'));
+    }
   });
 
   $('#familyNotificationsList').addEventListener('click',async function(e){
@@ -2227,6 +2303,33 @@ function renderFamilyNotifications(){
   }).join('');
 }
 
+
+async function transferFamilyAdminFromUi(uid){
+  const member=(familyContext?.members || []).find(m=>m.uid===uid);
+  if(!member) return;
+
+  const name=member.displayName || member.email || 'este membro';
+  const ok=await confirmDialog(
+    'Transferir administração?',
+    name+' se tornará o proprietário e administrador da família. Você continuará como membro e não poderá mais administrar os demais usuários. Essa alteração permite que você exclua sua conta depois sem apagar a família.'
+  );
+  if(!ok) return;
+
+  try{
+    await withLoading(
+      'Transferindo administração…',
+      'Atualizando o novo administrador e preservando a família.',
+      async function(){
+        await window.StopGastosCloud.transferFamilyOwnership(uid);
+        await refreshFamilyData();
+      }
+    );
+    toast('Administração transferida para '+name+'.','success');
+  }catch(err){
+    toast(err.message || 'Não foi possível transferir a administração.','error');
+  }
+}
+
 async function removeFamilyMemberFromUi(uid){
   const member=(familyContext?.members || []).find(m=>m.uid===uid);
   const ok=await confirmDialog('Remover membro?',(member?.displayName || member?.email || 'Este membro')+' deixará de fazer parte da família.');
@@ -2337,23 +2440,31 @@ function renderFamily(){
 
   $('#familyMembersList').innerHTML=allMembers.map(function(member){
     const isSelf=member.uid===cloudUser?.uid;
+    const isOwner=member.uid===context.family.ownerUid;
     const status=member.status || 'active';
-    const canRemove=isAdmin && !isSelf && member.uid!==context.family.ownerUid;
+    const canRemove=isAdmin && !isSelf && !isOwner;
+    const canTransfer=context.family.ownerUid===cloudUser?.uid && !isSelf && status==='active';
     const initial=(member.displayName || member.email || '?').trim().charAt(0).toUpperCase();
-    const statusLabel=status==='pending'?'Pendente':status==='declined'?'Recusado':'Ativo';
-    const statusClass=status==='pending'?'pending':status==='declined'?'declined':'active';
+    const statusLabel=isOwner?'Administrador':status==='pending'?'Pendente':status==='declined'?'Recusado':'Ativo';
+    const statusClass=isOwner?'admin':status==='pending'?'pending':status==='declined'?'declined':'active';
     const responseText=status==='declined'
       ? ' · recusado'+familyResponseTime(member.declinedAt)
       : status==='pending'
         ? ' · aguardando resposta'
         : '';
+    const actions=(canTransfer || canRemove)
+      ? '<div class="family-member-actions">'+
+          (canTransfer?'<button class="family-admin-action" data-transfer-admin="'+esc(member.uid)+'" title="Transferir administração para este membro">Tornar admin</button>':'')+
+          (canRemove?'<button class="row-btn member-remove" data-remove-member="'+esc(member.uid)+'" title="Remover vínculo">×</button>':'')+
+        '</div>'
+      : '';
 
     return '<div class="family-member-row '+statusClass+'">'+
       '<div class="family-mini-avatar">'+esc(initial)+'</div>'+
       '<div class="family-member-info"><b>'+esc(member.displayName || member.email || 'Membro')+'</b>'+
       '<small>'+esc(member.email || '')+(isSelf?' · você':'')+responseText+'</small></div>'+
       '<span class="member-status '+statusClass+'">'+statusLabel+'</span>'+
-      (canRemove?'<button class="row-btn member-remove" data-remove-member="'+esc(member.uid)+'" title="Remover vínculo">×</button>':'')+
+      actions+
     '</div>';
   }).join('') || '<div class="empty-state">Nenhum membro vinculado.</div>';
 

@@ -27,6 +27,10 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.8-2.6L20 11M4 13l2.1 4.6A7 7 0 0 0 17.9 15"/></symbol>
     <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M18 8v6M15 11h6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
   </svg>
   <div id="lockScreen" class="lock-screen">
     <div class="lock-visual" aria-hidden="true">
@@ -76,6 +80,11 @@
 
       <div class="sidebar-bottom">
         <button class="nav-item" data-nav="settings"><svg class="nav-icon"><use href="#i-settings"/></svg><b>Configurações</b></button>
+        <div class="sidebar-legal-links">
+          <button type="button" data-nav="about">Sobre</button>
+          <button type="button" data-nav="terms">Termos</button>
+          <button type="button" data-nav="privacy">Privacidade</button>
+        </div>
         <div class="security-badge"><span class="pulse-dot"></span><div><b>Conta protegida</b><small>Google + Firebase</small></div></div>
       </div>
     </aside>
@@ -500,10 +509,104 @@
             <button class="btn soft" data-open="category">＋ Nova categoria</button>
             <div id="categoryManager" class="category-manager"></div>
           </article>
-          <article class="panel settings-card danger-zone">
-            <div><span class="settings-icon">!</span><div><h3>Apagar dados</h3><p class="muted">Remove permanentemente o cofre deste dispositivo.</p></div></div>
-            <button id="wipeBtn" class="btn danger">Apagar tudo</button>
+          <article class="panel settings-card">
+            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-shield"/></svg></span><div><h3>Conta e segurança</h3><p class="muted">Acesso protegido pela sua conta Google e pelas regras do Firebase.</p></div></div>
+            <button class="btn soft" type="button" data-nav="privacy">Ver privacidade</button>
           </article>
+          <article class="panel settings-card legal-settings">
+            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-info"/></svg></span><div><h3>Informações e legal</h3><p class="muted">Conheça o aplicativo, os termos de uso e como seus dados são tratados.</p></div></div>
+            <div class="settings-link-grid">
+              <button class="btn soft" type="button" data-nav="about">Sobre</button>
+              <button class="btn soft" type="button" data-nav="terms">Termos de uso</button>
+              <button class="btn soft" type="button" data-nav="privacy">Política de privacidade</button>
+            </div>
+          </article>
+          <article class="panel settings-card danger-zone">
+            <div><span class="settings-icon">!</span><div><h3>Apagar dados financeiros</h3><p class="muted">Apaga seus lançamentos e configurações financeiras, mas mantém sua conta Google no Stop Gastos.</p></div></div>
+            <button id="wipeBtn" class="btn danger" type="button">Apagar dados</button>
+          </article>
+          <article class="panel settings-card danger-zone account-delete-zone">
+            <div><span class="settings-icon"><svg class="settings-svg"><use href="#i-trash"/></svg></span><div><h3>Excluir minha conta</h3><p class="muted">Remove seus dados do Stop Gastos, vínculos permitidos e a autenticação Firebase desta conta.</p></div></div>
+            <button id="deleteUserAccountBtn" class="btn danger" type="button">Excluir conta</button>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-about" class="view">
+        <div class="legal-hero panel">
+          <div class="legal-icon"><svg><use href="#i-info"/></svg></div>
+          <div>
+            <span class="eyebrow">SOBRE O STOP GASTOS</span>
+            <h1>Finanças pessoais e familiares em um só lugar</h1>
+            <p>O Stop Gastos é uma aplicação web para organizar receitas, despesas, contas, cartões, metas, orçamentos e o acompanhamento financeiro da família.</p>
+          </div>
+        </div>
+        <div class="legal-grid">
+          <article class="panel legal-card"><h3>Objetivo</h3><p>Facilitar o registro diário e transformar lançamentos financeiros em uma visão simples do mês, do orçamento e das metas.</p></article>
+          <article class="panel legal-card"><h3>Sincronização</h3><p>O acesso usa Google Authentication. Os dados sincronizados ficam no Cloud Firestore e o aplicativo mantém cache local para melhorar velocidade e disponibilidade.</p></article>
+          <article class="panel legal-card"><h3>Família</h3><p>Cada pessoa usa sua própria conta. O administrador pode convidar membros pelo e-mail cadastrado e visualizar o consolidado dos membros que aceitarem o convite.</p></article>
+          <article class="panel legal-card"><h3>Privacidade</h3><p>O Stop Gastos não precisa de senha própria. A identidade é gerenciada pelo Google/Firebase e as permissões de leitura e gravação são controladas pelas regras do Firestore.</p></article>
+        </div>
+        <article class="panel legal-note">
+          <span class="eyebrow">IMPORTANTE</span>
+          <h3>O Stop Gastos é uma ferramenta de organização</h3>
+          <p>Os relatórios, projeções e indicadores exibidos pelo aplicativo têm finalidade informativa e não constituem recomendação financeira, contábil, tributária ou de investimento.</p>
+        </article>
+      </section>
+
+      <section id="view-terms" class="view">
+        <div class="legal-page panel">
+          <span class="eyebrow">TERMOS DE USO</span>
+          <h1>Termos de Uso do Stop Gastos</h1>
+          <p class="legal-updated">Atualizado em 30 de agosto de 2026</p>
+          <h2>1. Aceitação</h2>
+          <p>Ao acessar ou utilizar o Stop Gastos, você concorda com estes termos. Se não concordar, não utilize a aplicação.</p>
+          <h2>2. Finalidade do serviço</h2>
+          <p>O Stop Gastos oferece recursos de organização financeira pessoal e familiar, incluindo lançamentos, contas, cartões, orçamentos, metas, relatórios e compartilhamento familiar autorizado.</p>
+          <h2>3. Conta e acesso</h2>
+          <p>O acesso é realizado por uma conta Google autenticada pelo Firebase Authentication. Você é responsável por manter sua conta Google protegida e por utilizar uma conta à qual tenha autorização de acesso.</p>
+          <h2>4. Família e compartilhamento</h2>
+          <p>O administrador de uma família pode convidar usuários já cadastrados pelo e-mail de acesso. O convidado decide aceitar ou recusar. Ao aceitar, autoriza o administrador da família a visualizar os dados financeiros disponibilizados pelo aplicativo enquanto o vínculo permanecer ativo.</p>
+          <h2>5. Responsabilidade pelos dados</h2>
+          <p>Você é responsável pela exatidão dos valores, datas, categorias e demais informações registradas. O aplicativo não valida a veracidade econômica dos lançamentos informados.</p>
+          <h2>6. Ausência de aconselhamento financeiro</h2>
+          <p>Indicadores, projeções, alertas e relatórios são informativos. Eles não substituem orientação profissional financeira, contábil, jurídica, tributária ou de investimentos.</p>
+          <h2>7. Disponibilidade e alterações</h2>
+          <p>Recursos podem ser corrigidos, alterados, removidos ou adicionados para melhorar segurança, desempenho e usabilidade. Não há garantia de disponibilidade ininterrupta.</p>
+          <h2>8. Exclusão da conta</h2>
+          <p>Você pode solicitar a exclusão da sua conta dentro das Configurações. Por segurança, a exclusão exige nova autenticação Google. Proprietários de família precisam remover os demais vínculos antes de excluir a própria conta.</p>
+          <h2>9. Uso adequado</h2>
+          <p>Não utilize o serviço para acessar dados de terceiros sem autorização, contornar regras de segurança, prejudicar o funcionamento da aplicação ou praticar atividades ilícitas.</p>
+          <h2>10. Atualizações destes termos</h2>
+          <p>Estes termos podem ser atualizados quando funcionalidades, integrações ou práticas do aplicativo mudarem. A data da revisão mais recente será informada nesta página.</p>
+        </div>
+      </section>
+
+      <section id="view-privacy" class="view">
+        <div class="legal-page panel">
+          <span class="eyebrow">PRIVACIDADE</span>
+          <h1>Política de Privacidade</h1>
+          <p class="legal-updated">Atualizada em 30 de agosto de 2026</p>
+          <h2>1. Dados utilizados</h2>
+          <p>Para operar o serviço, o Stop Gastos pode utilizar o UID da conta, nome, e-mail e foto fornecidos pelo login Google, além dos dados financeiros que você registra, configurações do aplicativo e identificadores técnicos necessários à sincronização e às notificações.</p>
+          <h2>2. Dados financeiros</h2>
+          <p>Lançamentos, contas, cartões, orçamentos, metas, categorias e demais informações financeiras são usados para fornecer as funcionalidades solicitadas por você e sincronizar seus dispositivos.</p>
+          <h2>3. Armazenamento</h2>
+          <p>O aplicativo utiliza armazenamento local do navegador e Cloud Firestore. Firebase Authentication e Cloud Firestore são serviços de infraestrutura fornecidos pelo Google.</p>
+          <h2>4. Família</h2>
+          <p>Um membro somente passa a integrar uma família após aceitar o convite. Enquanto o vínculo estiver ativo, o administrador pode visualizar o consolidado e os dados financeiros disponibilizados pelo aplicativo. Membros comuns não recebem acesso aos dados de outros membros.</p>
+          <h2>5. Diretório de e-mails</h2>
+          <p>Para localizar uma conta a ser convidada, o aplicativo mantém uma referência de diretório baseada no hash SHA-256 do e-mail. As regras do Firestore impedem a listagem pública desse diretório; a busca é direcionada ao e-mail informado.</p>
+          <h2>6. Compartilhamento</h2>
+          <p>Os dados não são vendidos a anunciantes. Informações podem ser processadas pelos serviços técnicos necessários ao funcionamento da aplicação, como Google/Firebase, conforme as configurações e políticas desses fornecedores.</p>
+          <h2>7. Notificações</h2>
+          <p>Se você autorizar notificações, o aplicativo pode armazenar um token técnico do dispositivo para possibilitar avisos. A permissão pode ser revogada nas configurações do navegador.</p>
+          <h2>8. Retenção e exclusão</h2>
+          <p>Você pode apagar apenas os dados financeiros ou solicitar a exclusão da conta nas Configurações. A exclusão procura remover perfil, estado financeiro, dispositivos, referência de diretório e vínculos que possam ser removidos pelo próprio usuário.</p>
+          <h2>9. Segurança</h2>
+          <p>O acesso utiliza Firebase Authentication e regras do Firestore baseadas no UID e no papel familiar. Nenhum sistema é imune a falhas, por isso mantenha sua conta Google protegida e não compartilhe sessões autenticadas.</p>
+          <h2>10. Controle do usuário</h2>
+          <p>Você pode sair da conta, exportar backup, apagar dados financeiros, sair de uma família quando permitido e excluir sua conta diretamente pelo aplicativo.</p>
         </div>
       </section>
     </main>
@@ -641,6 +744,31 @@
       <h3 id="confirmTitle">Confirmar ação</h3>
       <p id="confirmMessage">Tem certeza?</p>
       <div class="modal-actions"><button id="confirmCancel" class="btn soft">Cancelar</button><button id="confirmOk" class="btn danger">Confirmar</button></div>
+    </div>
+  </div>
+
+  <div id="deleteAccountBackdrop" class="modal-backdrop" hidden>
+    <div class="confirm-box delete-account-box" role="dialog" aria-modal="true" aria-labelledby="deleteAccountTitle">
+      <div class="confirm-icon">!</div>
+      <h3 id="deleteAccountTitle">Excluir definitivamente a conta?</h3>
+      <p>Essa ação remove seus dados do Stop Gastos e a autenticação Firebase desta conta. Para confirmar, digite <strong>EXCLUIR</strong>.</p>
+      <label class="field delete-confirm-field">Confirmação
+        <input id="deleteAccountConfirmInput" autocomplete="off" placeholder="Digite EXCLUIR" />
+      </label>
+      <div class="modal-actions">
+        <button id="deleteAccountCancelBtn" class="btn soft" type="button">Cancelar</button>
+        <button id="deleteAccountConfirmBtn" class="btn danger" type="button" disabled>Excluir minha conta</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="globalLoader" class="loading-overlay" hidden aria-live="polite" aria-busy="true">
+    <div class="loading-card" role="status">
+      <div class="loading-spinner" aria-hidden="true"><span></span></div>
+      <div>
+        <strong id="loadingTitle">Processando…</strong>
+        <p id="loadingMessage">Aguarde um instante.</p>
+      </div>
     </div>
   </div>
 

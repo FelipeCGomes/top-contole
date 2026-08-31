@@ -330,6 +330,84 @@
           <div><span>Valor total</span><strong id="shoppingTotal">R$ 0,00</strong><small>estimativa atual da compra</small></div>
         </div>
 
+        <section id="shoppingComparisonPanel" class="shopping-comparison" hidden>
+          <div class="shopping-compare-head">
+            <div>
+              <span class="eyebrow">COMPARAÇÃO DE MERCADOS</span>
+              <h3>Onde sua compra está mais barata?</h3>
+              <p class="muted">A cesta comparável usa somente produtos com preço em pelo menos dois mercados e compara uma unidade de cada apresentação.</p>
+            </div>
+            <button id="refreshShoppingComparisonBtn" class="btn soft" type="button">↻ Atualizar comparação</button>
+          </div>
+
+          <div class="shopping-compare-kpis">
+            <article class="shopping-compare-kpi best">
+              <span>Melhor mercado</span>
+              <strong id="shoppingBestMarket">—</strong>
+              <small id="shoppingBestMarketDetail">Sem dados comparáveis</small>
+            </article>
+            <article class="shopping-compare-kpi">
+              <span>Cesta comparável</span>
+              <strong id="shoppingBestBasket">R$ 0,00</strong>
+              <small>1 unidade de cada produto comparado</small>
+            </article>
+            <article class="shopping-compare-kpi saving">
+              <span>Economia possível</span>
+              <strong id="shoppingMarketSavings">R$ 0,00</strong>
+              <small id="shoppingMarketSavingsDetail">Diferença entre melhor e pior mercado</small>
+            </article>
+            <article class="shopping-compare-kpi">
+              <span>Produtos comparados</span>
+              <strong id="shoppingComparedProducts">0</strong>
+              <small id="shoppingComparedCoverage">Cadastre preços em mais de uma lista</small>
+            </article>
+          </div>
+
+          <div class="shopping-compare-grid">
+            <article class="panel shopping-market-ranking">
+              <div class="panel-head">
+                <div><span class="eyebrow">RANKING</span><h3>Comparação por mercado</h3></div>
+                <span class="soft-badge">cesta equivalente</span>
+              </div>
+              <div id="shoppingMarketBars" class="shopping-market-bars"></div>
+            </article>
+
+            <article class="panel shopping-best-buy">
+              <div class="panel-head">
+                <div><span class="eyebrow">COMPRA INTELIGENTE</span><h3>Menor preço por produto</h3></div>
+              </div>
+              <div id="shoppingSplitInsight" class="shopping-split-insight">
+                Informe preços em pelo menos duas listas para calcular a melhor combinação.
+              </div>
+              <div id="shoppingBestItemsPreview" class="shopping-best-items-preview"></div>
+            </article>
+          </div>
+
+          <article class="panel shopping-product-compare">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">PRODUTO A PRODUTO</span>
+                <h3>Onde cada item está mais barato</h3>
+              </div>
+              <span id="shoppingCompareHint" class="muted">Comparando apresentações iguais</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table shopping-compare-table">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Melhor local</th>
+                    <th class="right">Menor preço</th>
+                    <th class="right">Maior preço</th>
+                    <th class="right">Economia</th>
+                  </tr>
+                </thead>
+                <tbody id="shoppingProductCompareBody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
         <article class="panel shopping-panel">
           <div class="panel-head shopping-panel-head">
             <div>

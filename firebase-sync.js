@@ -457,7 +457,10 @@ async function migrateLegacyState(state){
   requireUser();
   if(!state) return {migrated:false};
   const result=await pushState(state,{sections:STATE_SECTIONS});
-  return {...result,migrated:!!result.synced};
+  return {
+    ...result,
+    migrated:result?.modular===true
+  };
 }
 
 function watchState(callback,uid=currentUser?.uid){

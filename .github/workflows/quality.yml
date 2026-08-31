@@ -42,6 +42,26 @@ jobs:
           }
           console.log('DOM bindings OK:', new Set(ids).size, 'ids checked');
           NODE
+      - name: Check UI helper consistency
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const forbidden = ['escapeHtml'];
+          for (const name of forbidden) {
+            const refs = (js.match(new RegExp('\\b' + name + '\\b','g')) || []).length;
+            if (refs > 0) {
+              console.error('Unexpected legacy helper reference:', name, refs);
+              process.exit(1);
+            }
+          }
+          if (!/function\s+esc\s*\(/.test(js)) {
+            console.error('Expected shared esc() helper is missing');
+            process.exit(1);
+          }
+          console.log('UI helper consistency OK');
+          NODE
+
       - name: Validate CSS structure
         run: |
           node - <<'NODE'

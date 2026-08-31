@@ -310,9 +310,11 @@
       <section id="view-shopping" class="view">
         <div class="section-toolbar shopping-toolbar">
           <div>
-            <span class="eyebrow">COMPRAS</span>
-            <h3>Lista de compras</h3>
-            <p class="muted">Planeje quantidades antes de sair e informe os preços no mercado para acompanhar o total em tempo real.</p>
+            <div class="shopping-title-line">
+              <div><span class="eyebrow">COMPRAS</span><h3>Lista de compras</h3></div>
+              <span id="shoppingSharingBadge" class="soft-badge">Pessoal</span>
+            </div>
+            <p id="shoppingSharingText" class="muted">Planeje quantidades antes de sair e informe os preços no mercado para acompanhar o total em tempo real.</p>
           </div>
           <div class="shopping-toolbar-actions">
             <select id="shoppingListSelect" aria-label="Selecionar lista de compras"></select>
@@ -343,7 +345,12 @@
 
           <form id="shoppingItemForm" class="shopping-add-row">
             <label class="field shopping-product-field">Produto
-              <input id="shoppingItemProduct" maxlength="80" placeholder="Ex.: Arroz" autocomplete="off" />
+              <select id="shoppingItemPreset" aria-label="Selecionar produto">
+                <option value="">Selecione um produto</option>
+              </select>
+            </label>
+            <label id="shoppingManualWrap" class="field shopping-manual-field" hidden>Produto manual
+              <input id="shoppingItemProduct" maxlength="80" placeholder="Digite o produto" autocomplete="off" />
             </label>
             <label class="field">Qtd.
               <input id="shoppingItemQty" type="number" min="0.001" step="0.001" value="1" />

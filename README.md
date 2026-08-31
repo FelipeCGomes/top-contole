@@ -50,12 +50,19 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 ## Lista de compras
 
 - Múltiplas listas com nome e mercado/local opcional
+- Listas pessoais para usuários sem família
+- Listas compartilhadas em tempo real quando o usuário participa de uma família
+- Todos os membros ativos podem incluir, editar e remover itens da lista compartilhada
+- Estrutura colaborativa em `families/{familyId}/shoppingLists/{listId}/items/{itemId}`
+- Catálogo suspenso com itens e apresentações comuns de supermercado
+- Opção `Outro / inserir manualmente` para produtos fora do catálogo
 - Cadastro de produto, quantidade e valor unitário
 - Edição direta dos preços durante a compra
 - Cálculo automático de valor total por linha
 - Cards com produtos, quantidade de itens, valor médio por item precificado e valor total
-- Salvamento local imediato e sincronização automática com Firebase
+- Salvamento local imediato nas listas pessoais e sincronização Firebase nas listas familiares
 - Layout responsivo otimizado para uso no celular dentro do mercado
+- Exclusão de lista compartilhada restrita ao criador ou administrador da família
 
 ## Experiência e conta
 

@@ -31,6 +31,7 @@ let familyStateUnsubs = [];
 let familyInvitations = [];
 let familyInviteUnsubscribe = null;
 let familyMembersUnsubscribe = null;
+let familyLoadError = '';
 let notifiedFamilyInvites = new Set();
 
 const fallbackCategories = [
@@ -1814,10 +1815,21 @@ async function refreshFamilyData(){
   const cloud=window.StopGastosCloud;
   if(!cloudUser || !cloud || !cloud.ready) return;
 
+  familyLoadError='';
+
   try{
     const result=await cloud.getFamilyStates();
     familyContext=result.context || null;
     familyStates=result.states || {};
+
+    if(result.context?.repaired){
+      if(result.context?.orphaned){
+        toast('Um vínculo familiar antigo e inválido foi corrigido automaticamente.','info');
+      }else if(result.context?.previousStatus){
+        toast('Seu perfil familiar foi ajustado para o status atual do convite.','info');
+      }
+    }
+
     if(appState) familyStates[cloudUser.uid]={state:clone(appState),clientUpdatedAt:localStateUpdatedAt};
 
     familyInvitations=await cloud.getFamilyInvitations();
@@ -1858,7 +1870,7 @@ async function refreshFamilyData(){
     renderFamilyNotifications();
     familyInvitations.forEach(showIncomingFamilyInvite);
   }catch(err){
-    familyContext=null;
+    familyLoadError=String(err?.message || err || 'Não foi possível carregar sua família.');
     familyStates={};
     familyInvitations=[];
     renderFamily();
@@ -1871,7 +1883,17 @@ function bindFamilyEvents(){
   $('#inviteFamilyByEmailBtn').addEventListener('click',inviteFamilyByEmailFromUi);
   $('#refreshFamilyBtn').addEventListener('click',async function(){
     await refreshFamilyData();
-    toast('Dados da família atualizados.','success');
+    if(!familyLoadError) toast('Dados da família atualizados.','success');
+  });
+  $('#retryFamilyBtn').addEventListener('click',async function(){
+    const btn=$('#retryFamilyBtn');
+    btn.disabled=true;
+    try{
+      await refreshFamilyData();
+      if(!familyLoadError) toast('Vínculo familiar carregado.','success');
+    }finally{
+      btn.disabled=false;
+    }
   });
   $('#leaveFamilyBtn').addEventListener('click',leaveFamilyFromUi);
 
@@ -1900,13 +1922,25 @@ function bindFamilyEvents(){
 async function createFamilyFromUi(){
   const cloud=window.StopGastosCloud;
   const name=$('#familyNameInput').value.trim();
+  const button=$('#createFamilyBtn');
+
+  button.disabled=true;
   try{
-    await cloud.createFamily(name);
+    const context=await cloud.createFamily(name);
+    familyLoadError='';
+    familyContext=context || null;
     $('#familyNameInput').value='';
     await refreshFamilyData();
     toast('Família criada. Você é o administrador.','success');
   }catch(err){
-    toast(err.message || 'Não foi possível criar a família.','error');
+    const message=String(err?.message || err || 'Não foi possível criar a família.');
+    if(message.includes('Firestore') || message.includes('vínculo') || message.includes('família')){
+      familyLoadError=message;
+      renderFamily();
+    }
+    toast(message,'error');
+  }finally{
+    button.disabled=false;
   }
 }
 
@@ -2052,7 +2086,23 @@ async function leaveFamilyFromUi(){
 function renderFamily(){
   const onboarding=$('#familyOnboarding');
   const dashboard=$('#familyDashboard');
-  if(!onboarding || !dashboard) return;
+  const errorPanel=$('#familyLoadErrorPanel');
+  const errorText=$('#familyLoadErrorText');
+  if(!onboarding || !dashboard || !errorPanel) return;
+
+  if(familyLoadError){
+    onboarding.hidden=true;
+    dashboard.hidden=true;
+    errorPanel.hidden=false;
+    if(errorText) errorText.textContent=familyLoadError;
+    $('#familyTitle').textContent='Seu vínculo familiar precisa ser validado';
+    $('#familySubtitle').textContent='Não vamos criar outra família enquanto existir um vínculo que ainda não foi verificado.';
+    $('#familyRoleBadge').textContent='Verificar vínculo';
+    renderFamilyNotifications();
+    return;
+  }
+
+  errorPanel.hidden=true;
 
   const context=familyContext;
   const hasFamily=!!(context && context.family);

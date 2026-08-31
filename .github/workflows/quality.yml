@@ -90,7 +90,7 @@ jobs:
           const fs = require('fs');
           const js = fs.readFileSync('app.js','utf8');
           const singleSelectorHelpers = js.split('const $ = function').length - 1;
-          const doubleSelectorHelpers = js.split('const $ = function').length - 1;
+          const doubleSelectorHelpers = js.split('const $$ = function').length - 1;
           if (singleSelectorHelpers !== 1 || doubleSelectorHelpers !== 1) {
             console.error('Selector helpers invalid:', {singleSelectorHelpers, doubleSelectorHelpers});
             process.exit(1);

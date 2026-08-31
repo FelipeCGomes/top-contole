@@ -21,6 +21,7 @@ import {
   collection,
   setDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   getDocsFromServer,
   deleteDoc,
@@ -309,6 +310,32 @@ async function getOwnProfile(){
 }
 
 
+
+function firestorePermissionDenied(error){
+  const code=String(error?.code || '');
+  const message=String(error?.message || error || '').toLowerCase();
+  return code.includes('permission-denied')
+    || message.includes('insufficient permissions')
+    || message.includes('missing or insufficient permissions');
+}
+
+async function pushLegacyState(state,clientUpdatedAt){
+  await setDoc(stateRef(),{
+    state,
+    clientUpdatedAt,
+    deviceId:deviceId(),
+    updatedAt:serverTimestamp()
+  },{merge:true});
+  await waitForPendingWrites(db);
+
+  return {
+    synced:true,
+    clientUpdatedAt,
+    fallbackLegacy:true,
+    schemaVersion:1
+  };
+}
+
 async function pushState(state,options={}){
   requireUser();
   if(!state) return {synced:false};
@@ -342,15 +369,28 @@ async function pushState(state,options={}){
     updatedAt:serverTimestamp()
   },{merge:true});
 
-  await batch.commit();
-  await waitForPendingWrites(db);
+  try{
+    await batch.commit();
+    await waitForPendingWrites(db);
 
-  return {
-    synced:true,
-    clientUpdatedAt,
-    sections,
-    schemaVersion:STATE_SCHEMA_VERSION
-  };
+    return {
+      synced:true,
+      clientUpdatedAt,
+      sections,
+      schemaVersion:STATE_SCHEMA_VERSION,
+      modular:true
+    };
+  }catch(error){
+    if(!firestorePermissionDenied(error)) throw error;
+
+    const fallback=await pushLegacyState(state,clientUpdatedAt);
+    return {
+      ...fallback,
+      sections,
+      modular:false,
+      modularPermissionDenied:true
+    };
+  }
 }
 
 function stateResult(snapshot){
@@ -376,8 +416,12 @@ async function pullModularState(uid=currentUser?.uid,serverOnly=false){
 async function pullState(uid=currentUser?.uid){
   requireUser();
 
-  const modular=await pullModularState(uid,false);
-  if(modular?.state) return modular;
+  try{
+    const modular=await pullModularState(uid,false);
+    if(modular?.state) return modular;
+  }catch(error){
+    if(!firestorePermissionDenied(error)) throw error;
+  }
 
   const snapshot=await getDoc(stateRef(uid));
   const legacy=stateResult(snapshot);
@@ -388,8 +432,23 @@ async function pullState(uid=currentUser?.uid){
 async function pullStateFromServer(uid=currentUser?.uid){
   requireUser();
 
-  const modular=await pullModularState(uid,true);
-  if(modular?.state) return modular;
+  try{
+    const modular=await pullModularState(uid,true);
+    if(modular?.state) return modular;
+  }catch(error){
+    if(!firestorePermissionDenied(error)) throw error;
+  }
+
+  try{
+    const legacySnapshot=await getDocFromServer(stateRef(uid));
+    const legacy=stateResult(legacySnapshot);
+    if(legacy?.state){
+      legacy.legacy=true;
+      return legacy;
+    }
+  }catch(error){
+    if(!firestorePermissionDenied(error)) throw error;
+  }
 
   return null;
 }
@@ -404,18 +463,46 @@ async function migrateLegacyState(state){
 function watchState(callback,uid=currentUser?.uid){
   requireUser();
 
-  return onSnapshot(dataCollectionRef(uid),{includeMetadataChanges:true},snapshot=>{
+  let activeUnsubscribe=null;
+  let closed=false;
+
+  const watchLegacy=()=>{
+    if(closed) return;
+
+    activeUnsubscribe=onSnapshot(stateRef(uid),{includeMetadataChanges:true},snapshot=>{
+      const result=stateResult(snapshot);
+      if(result?.state) result.legacy=true;
+      callback(result);
+    },error=>{
+      globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
+        detail:{message:error.message || String(error)}
+      }));
+    });
+  };
+
+  activeUnsubscribe=onSnapshot(dataCollectionRef(uid),{includeMetadataChanges:true},snapshot=>{
     const result=buildStateFromDataDocs(snapshot.docs);
     if(result){
       result.fromCache=!!snapshot.metadata?.fromCache;
       result.hasPendingWrites=snapshot.docs.some(docSnap=>!!docSnap.metadata?.hasPendingWrites);
+      callback(result);
     }
-    callback(result);
   },error=>{
+    if(firestorePermissionDenied(error)){
+      try{activeUnsubscribe?.();}catch(unsubError){}
+      watchLegacy();
+      return;
+    }
+
     globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
       detail:{message:error.message || String(error)}
     }));
   });
+
+  return ()=>{
+    closed=true;
+    try{activeUnsubscribe?.();}catch(error){}
+  };
 }
 
 async function createFamily(name){

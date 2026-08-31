@@ -53,8 +53,8 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Tela **Sobre** integrada à aplicação
 - Tela **Termos de Uso** integrada à aplicação
 - Tela **Política de Privacidade** integrada à aplicação
-- Exclusão definitiva da conta com confirmação digitando `EXCLUIR` e reautenticação Google
-- Proprietários de família com outros vínculos não podem excluir a conta até remover os demais membros, evitando famílias órfãs
+- Exclusão definitiva da conta com confirmação digitando `EXCLUIR`; o Google só pede confirmação adicional quando a sessão não é recente
+- Proprietários de família com outros vínculos precisam remover todos ou transferir a administração para um membro ativo, evitando famílias órfãs
 - A exclusão procura remover estado financeiro, perfil, dispositivos, diretório de e-mail, vínculos familiares e autenticação Firebase
 
 ## Estrutura Firebase

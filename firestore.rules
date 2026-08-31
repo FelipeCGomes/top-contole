@@ -191,7 +191,10 @@ service cloud.firestore {
         adminOf(resource.data.familyId)
       );
 
-      allow delete: if signedIn() && adminOf(resource.data.familyId);
+      allow delete: if signedIn() && (
+        resource.data.targetUid == request.auth.uid
+        || adminOf(resource.data.familyId)
+      );
     }
 
     match /{document=**} {

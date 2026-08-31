@@ -22,11 +22,13 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   deleteDoc,
   onSnapshot,
   query,
   where,
   writeBatch,
+  waitForPendingWrites,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 import {
@@ -41,6 +43,24 @@ const vapidKey = globalThis.STOP_GASTOS_FIREBASE_VAPID_KEY || '';
 const required = ['apiKey','authDomain','projectId','messagingSenderId','appId'];
 const configured = required.every(key => String(cfg[key] || '').trim());
 const authObservers = new Set();
+
+const STATE_SCHEMA_VERSION = 2;
+const STATE_SECTIONS = [
+  'categories',
+  'transactions',
+  'recurring',
+  'shoppingLists',
+  'shoppingActiveListId',
+  'budgets',
+  'goals',
+  'accounts',
+  'cards',
+  'bills',
+  'transfers',
+  'audit',
+  'settings'
+];
+
 
 let app = null;
 let auth = null;
@@ -208,6 +228,62 @@ function stateRef(uid=currentUser?.uid){
   return doc(db,'users',uid,'state','main');
 }
 
+function dataCollectionRef(uid=currentUser?.uid){
+  requireUser();
+  return collection(db,'users',uid,'data');
+}
+
+function dataSectionRef(section,uid=currentUser?.uid){
+  requireUser();
+  return doc(db,'users',uid,'data',section);
+}
+
+function dataMetaRef(uid=currentUser?.uid){
+  return dataSectionRef('_meta',uid);
+}
+
+function buildStateFromDataDocs(docs){
+  if(!docs || !docs.length) return null;
+
+  const state={};
+  let meta=null;
+  let latestClientUpdatedAt='';
+  let device='';
+
+  docs.forEach(snapshot=>{
+    const data=snapshot.data() || {};
+    if(snapshot.id==='_meta'){
+      meta=data;
+      latestClientUpdatedAt=data.clientUpdatedAt || latestClientUpdatedAt;
+      device=data.deviceId || device;
+      return;
+    }
+
+    if(!STATE_SECTIONS.includes(snapshot.id)) return;
+    state[snapshot.id]=data.value;
+    const ts=String(data.clientUpdatedAt || '');
+    if(ts>latestClientUpdatedAt) latestClientUpdatedAt=ts;
+    if(data.deviceId) device=data.deviceId;
+  });
+
+  const hasState=STATE_SECTIONS.some(section=>Object.prototype.hasOwnProperty.call(state,section));
+  if(!hasState) return null;
+
+  state.version=Number(meta?.version || 3);
+  state.createdAt=meta?.createdAt || new Date().toISOString();
+
+  return {
+    state,
+    clientUpdatedAt:meta?.clientUpdatedAt || latestClientUpdatedAt || '',
+    deviceId:meta?.deviceId || device || '',
+    schemaVersion:Number(meta?.schemaVersion || STATE_SCHEMA_VERSION),
+    fromCache:false,
+    hasPendingWrites:false,
+    modular:true
+  };
+}
+
+
 async function ensureOwnProfile(){
   requireUser();
   const ref=profileRef();
@@ -232,17 +308,49 @@ async function getOwnProfile(){
   return snap.exists() ? snap.data() : null;
 }
 
-async function pushState(state){
+
+async function pushState(state,options={}){
   requireUser();
   if(!state) return {synced:false};
+
+  const requested=Array.isArray(options.sections) && options.sections.length
+    ? options.sections
+    : STATE_SECTIONS;
+
+  const sections=[...new Set(requested)].filter(section=>STATE_SECTIONS.includes(section));
+  if(!sections.length) return {synced:false,noChanges:true};
+
   const clientUpdatedAt=new Date().toISOString();
-  await setDoc(stateRef(),{
-    state,
+  const batch=writeBatch(db);
+
+  sections.forEach(section=>{
+    batch.set(dataSectionRef(section),{
+      value:state[section] ?? null,
+      clientUpdatedAt,
+      deviceId:deviceId(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+  });
+
+  batch.set(dataMetaRef(),{
+    schemaVersion:STATE_SCHEMA_VERSION,
+    version:Number(state.version || 3),
+    createdAt:state.createdAt || clientUpdatedAt,
     clientUpdatedAt,
     deviceId:deviceId(),
+    sections:STATE_SECTIONS,
     updatedAt:serverTimestamp()
   },{merge:true});
-  return {synced:true,clientUpdatedAt};
+
+  await batch.commit();
+  await waitForPendingWrites(db);
+
+  return {
+    synced:true,
+    clientUpdatedAt,
+    sections,
+    schemaVersion:STATE_SCHEMA_VERSION
+  };
 }
 
 function stateResult(snapshot){
@@ -253,22 +361,60 @@ function stateResult(snapshot){
     clientUpdatedAt:data.clientUpdatedAt || '',
     deviceId:data.deviceId || '',
     fromCache:!!snapshot.metadata?.fromCache,
-    hasPendingWrites:!!snapshot.metadata?.hasPendingWrites
+    hasPendingWrites:!!snapshot.metadata?.hasPendingWrites,
+    modular:false
   };
+}
+
+async function pullModularState(uid=currentUser?.uid,serverOnly=false){
+  requireUser();
+  const ref=dataCollectionRef(uid);
+  const snapshots=serverOnly ? await getDocsFromServer(ref) : await getDocs(ref);
+  return buildStateFromDataDocs(snapshots.docs);
 }
 
 async function pullState(uid=currentUser?.uid){
   requireUser();
+
+  const modular=await pullModularState(uid,false);
+  if(modular?.state) return modular;
+
   const snapshot=await getDoc(stateRef(uid));
-  return stateResult(snapshot);
+  const legacy=stateResult(snapshot);
+  if(legacy?.state) legacy.legacy=true;
+  return legacy;
+}
+
+async function pullStateFromServer(uid=currentUser?.uid){
+  requireUser();
+
+  const modular=await pullModularState(uid,true);
+  if(modular?.state) return modular;
+
+  return null;
+}
+
+async function migrateLegacyState(state){
+  requireUser();
+  if(!state) return {migrated:false};
+  const result=await pushState(state,{sections:STATE_SECTIONS});
+  return {...result,migrated:!!result.synced};
 }
 
 function watchState(callback,uid=currentUser?.uid){
   requireUser();
-  return onSnapshot(stateRef(uid),{includeMetadataChanges:true},snapshot=>{
-    callback(stateResult(snapshot));
+
+  return onSnapshot(dataCollectionRef(uid),{includeMetadataChanges:true},snapshot=>{
+    const result=buildStateFromDataDocs(snapshot.docs);
+    if(result){
+      result.fromCache=!!snapshot.metadata?.fromCache;
+      result.hasPendingWrites=snapshot.docs.some(docSnap=>!!docSnap.metadata?.hasPendingWrites);
+    }
+    callback(result);
   },error=>{
-    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{detail:{message:error.message || String(error)}}));
+    globalThis.dispatchEvent(new CustomEvent('stopgastos:cloud-error',{
+      detail:{message:error.message || String(error)}
+    }));
   });
 }
 
@@ -1127,6 +1273,8 @@ globalThis.StopGastosCloud={
   getOwnProfile,
   pushState,
   pullState,
+  pullStateFromServer,
+  migrateLegacyState,
   watchState,
   createFamily,
   createFamilyInvite,

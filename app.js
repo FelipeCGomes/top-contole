@@ -1243,14 +1243,22 @@ function scheduleShoppingAutosave(){
     status.classList.add('saving');
   }
 
+  // Grava no armazenamento local imediatamente a cada alteração.
+  // O próprio saveVault agrupa o envio ao Firebase para evitar excesso de rede.
+  saveVault().catch(function(){
+    if(status){
+      status.textContent='Salvo neste dispositivo';
+      status.classList.remove('saving');
+    }
+  });
+
   clearTimeout(shoppingAutosaveTimer);
-  shoppingAutosaveTimer=setTimeout(async function(){
-    await saveVault();
+  shoppingAutosaveTimer=setTimeout(function(){
     if(status){
       status.textContent='Salvo automaticamente';
       status.classList.remove('saving');
     }
-  },320);
+  },420);
 }
 
 function handleShoppingGridInput(e){
@@ -1907,6 +1915,22 @@ async function loadDemoData(){
         rec.cardId=appState.cards[0].id;
       }
     });
+  }
+  if(!appState.shoppingLists.length){
+    const shoppingDemo={
+      id:uid('shop'),
+      name:'Compras do mês',
+      store:'Mercado',
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+      items:[
+        {id:uid('shopitem'),product:'Arroz',qty:2,unitPrice:15,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()},
+        {id:uid('shopitem'),product:'Feijão',qty:2,unitPrice:8.5,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()},
+        {id:uid('shopitem'),product:'Leite',qty:6,unitPrice:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}
+      ]
+    };
+    appState.shoppingLists.push(shoppingDemo);
+    appState.shoppingActiveListId=shoppingDemo.id;
   }
   if(!appState.bills.length){
     appState.bills.push(

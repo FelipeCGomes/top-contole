@@ -1120,7 +1120,12 @@ function bindRowActions(){
 
 function renderRecurring(){
   if(!appState) return;
-  const list=appState.recurring.slice().sort(function(a,b){return Number(a.day)-Number(b.day);});
+
+  const list=appState.recurring
+    .filter(function(r){return r && r.type!=='income';})
+    .slice()
+    .sort(function(a,b){return Number(a.day)-Number(b.day);});
+
   $('#recurringEmpty').hidden=list.length!==0;
 
   $('#recurringGrid').innerHTML=list.map(function(r){
@@ -1128,18 +1133,16 @@ function renderRecurring(){
     const isSub=r.kind==='subscription';
     const annual=isSub ? '<small class="annual-cost">Custo anual: '+money(Number(r.amount)*12)+'</small>' : '';
     const linkedCard=r.payment==='Cartão de crédito' && r.cardId ? getCard(r.cardId) : null;
-    const paymentLabel=linkedCard
-      ? '💳 '+linkedCard.name
-      : (r.payment || 'Automático');
+    const paymentLabel=linkedCard ? '💳 '+linkedCard.name : (r.payment || 'Automático');
 
-    return '<article class="rec-card">'+
+    return '<article class="rec-card animated-card">'+
       '<div class="card-top"><span class="category-icon">'+c.icon+'</span><div class="card-menu"><button class="row-btn edit-rec" data-id="'+r.id+'">✎</button><button class="row-btn delete-rec" data-id="'+r.id+'">×</button></div></div>'+
       '<h4>'+esc(r.description)+'</h4>'+
       '<p>'+esc(c.name)+' · dia '+Number(r.day)+'</p>'+
       '<div class="rec-payment-line">'+esc(paymentLabel)+'</div>'+
       annual+
-      '<div class="rec-value '+r.type+'">'+(r.type==='expense'?'- ':'+ ')+money(r.amount)+'</div>'+
-      '<div class="rec-bottom"><span class="type-pill '+r.type+'">'+(isSub?'Assinatura':(r.type==='expense'?'Despesa':'Receita'))+'</span><input class="toggle rec-toggle" data-id="'+r.id+'" type="checkbox" '+(r.active!==false?'checked':'')+' /></div>'+
+      '<div class="rec-value expense">- '+money(r.amount)+'</div>'+
+      '<div class="rec-bottom"><span class="type-pill expense">'+(isSub?'Assinatura':'Despesa fixa')+'</span><input class="toggle rec-toggle" data-id="'+r.id+'" type="checkbox" '+(r.active!==false?'checked':'')+' /></div>'+
     '</article>';
   }).join('');
 
@@ -1151,16 +1154,12 @@ function renderRecurring(){
       if(rec){
         rec.active=input.checked;
         logAudit('recurring-toggle',rec.description);
-        await saveVault();
-        toast(input.checked?'Recorrência ativada.':'Recorrência pausada.','success');
+        await saveVault(false);
+        toast(input.checked?'Custo fixo ativado.':'Custo fixo pausado.','success');
       }
     };
   });
 }
-
-
-
-const shoppingAutosaveTimers=new Map();
 
 function shoppingIsFamilyShared(){
   return !!(familyContext?.family?.id);
@@ -2489,7 +2488,7 @@ async function saveTransactionForm(e){
 }
 
 async function saveRecurringForm(e){
-  return withLoading("Salvando recorrência…","Atualizando seus custos e receitas fixas.",async function(){
+  return withLoading('Salvando custo fixo…','Atualizando sua despesa recorrente.',async function(){
     e.preventDefault();
 
     const id=$('#recurringId').value;
@@ -2509,7 +2508,7 @@ async function saveRecurringForm(e){
 
     const record={
       id:id || uid('rec'),
-      type:getRadio('recType'),
+      type:'expense',
       kind:$('#recKind').value || 'fixed',
       description:$('#recDescription').value.trim(),
       amount:Number($('#recAmount').value),
@@ -2537,7 +2536,7 @@ async function saveRecurringForm(e){
 
     logAudit(index>=0?'recurring-update':'recurring-create',record.description);
     await commitStateChange();
-    toast(index>=0?'Recorrência atualizada.':'Recorrência criada.','success');
+    toast(index>=0?'Custo fixo atualizado.':'Custo fixo criado.','success');
   });
 }
 
@@ -2613,14 +2612,35 @@ async function deleteGoal(id){
 
 function ensureRecurringForMonth(monthKey){
   if(!appState) return;
+
   appState.recurring
-    .filter(function(r){return r.active!==false;})
+    .filter(function(r){return r && r.active!==false && r.type!=='income';})
     .forEach(function(r){syncRecurringTransactionForMonth(r,monthKey);});
+
+  appState.incomeSources
+    .filter(function(source){return source && source.active!==false;})
+    .forEach(function(source){
+      syncRecurringTransactionForMonth({
+        id:source.id,
+        type:'income',
+        kind:'income',
+        description:source.description,
+        amount:Number(source.amount || 0),
+        day:Number(source.day || 1),
+        category:'outros',
+        payment:'Crédito em conta',
+        accountId:source.accountId || '',
+        active:source.active!==false,
+        incomeKind:source.kind || 'other',
+        sourceType:'incomeSource'
+      },monthKey);
+    });
 }
 
 function recurringTransactionData(recurring,monthKey){
   const chargeDate=localDateKey(safeMonthDate(monthKey,Number(recurring.day || 1)));
-  const isCredit=recurring.payment==='Cartão de crédito' && recurring.cardId;
+  const isIncome=recurring.type==='income';
+  const isCredit=!isIncome && recurring.payment==='Cartão de crédito' && recurring.cardId;
   const card=isCredit ? getCard(recurring.cardId) : null;
 
   let date=chargeDate;
@@ -2634,21 +2654,24 @@ function recurringTransactionData(recurring,monthKey){
   }
 
   return {
-    type:recurring.type,
+    type:isIncome?'income':'expense',
     description:recurring.description,
     amount:Number(recurring.amount),
     date,
     purchaseDate:chargeDate,
     invoiceMonth,
-    category:recurring.category,
-    payment:recurring.payment || 'Automático',
-    accountId:'',
+    category:isIncome ? 'outros' : recurring.category,
+    payment:isIncome ? 'Crédito em conta' : (recurring.payment || 'Automático'),
+    accountId:isIncome ? (recurring.accountId || '') : '',
     cardId,
-    notes:card
-      ? 'Gerado automaticamente a partir de custo fixo · '+card.name
-      : 'Gerado automaticamente a partir de custo fixo',
+    notes:isIncome
+      ? 'Gerado automaticamente a partir de renda recorrente'
+      : card
+        ? 'Gerado automaticamente a partir de custo fixo · '+card.name
+        : 'Gerado automaticamente a partir de custo fixo',
     sourceRecurringId:recurring.id,
-    recurrenceKey:recurring.id+':'+monthKey,
+    sourceType:isIncome ? 'incomeSource' : 'recurringExpense',
+    recurrenceKey:(isIncome?'income:':'expense:')+recurring.id+':'+monthKey,
     updatedAt:new Date().toISOString()
   };
 }

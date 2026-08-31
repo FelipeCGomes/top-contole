@@ -4955,9 +4955,11 @@ function updateInstallmentFields(editing){
 }
 
 function cardInvoiceMonth(purchaseDate,card){
-  const d=new Date(purchaseDate+'T12:00:00');
   const base=purchaseDate.slice(0,7);
-  return d.getDate()<=Number(card.closingDay||1)?base:shiftMonth(base,1);
+  if(isBenefitCard(card)) return base;
+
+  const d=new Date(purchaseDate+'T12:00:00');
+  return d.getDate()<=Number(card.closingDay||1) ? base : shiftMonth(base,1);
 }
 
 function getAccount(id){
@@ -5023,46 +5025,152 @@ async function deleteAccount(id){
 }
 
 function cardCommitted(card){
+  if(isBenefitCard(card)){
+    return cardPeriodUsed(card,selectedMonth);
+  }
+
   const today=localDateKey(new Date());
-  return appState.transactions.filter(function(t){return t.cardId===card.id&&t.type==='expense'&&t.date>=today;}).reduce(function(a,t){return a+Number(t.amount);},0);
+  return appState.transactions
+    .filter(function(t){
+      return t.cardId===card.id && t.type==='expense' && t.date>=today;
+    })
+    .reduce(function(sum,t){return sum+Number(t.amount || 0);},0);
 }
+
+function cardPeriodUsed(card,month){
+  return appState.transactions
+    .filter(function(t){
+      return t.cardId===card.id
+        && t.type==='expense'
+        && String(t.purchaseDate || t.date || '').slice(0,7)===month;
+    })
+    .reduce(function(sum,t){return sum+Number(t.amount || 0);},0);
+}
+
 function cardInvoice(card,month){
-  return appState.transactions.filter(function(t){return t.cardId===card.id&&t.type==='expense'&&(t.invoiceMonth||t.date.slice(0,7))===month;}).reduce(function(a,t){return a+Number(t.amount);},0);
+  if(isBenefitCard(card)) return 0;
+
+  return appState.transactions
+    .filter(function(t){
+      return t.cardId===card.id
+        && t.type==='expense'
+        && (t.invoiceMonth || t.date.slice(0,7))===month;
+    })
+    .reduce(function(sum,t){return sum+Number(t.amount || 0);},0);
 }
+
 function renderCards(){
   if(!appState || !$('#cardsGrid')) return;
-  const limit=appState.cards.reduce(function(a,c){return a+Number(c.limit||0);},0);
-  const used=appState.cards.reduce(function(a,c){return a+cardCommitted(c);},0);
-  const invoice=appState.cards.reduce(function(a,c){return a+cardInvoice(c,selectedMonth);},0);
-  $('#cardsLimit').textContent=money(limit); $('#cardsUsed').textContent=money(used); $('#cardsAvailable').textContent=money(Math.max(0,limit-used)); $('#cardsInvoice').textContent=money(invoice);
+
+  const capacity=appState.cards.reduce(function(sum,card){
+    return sum+Number(card.limit || 0);
+  },0);
+
+  const used=appState.cards.reduce(function(sum,card){
+    return sum+cardCommitted(card);
+  },0);
+
+  const invoice=appState.cards.reduce(function(sum,card){
+    return sum+cardInvoice(card,selectedMonth);
+  },0);
+
+  $('#cardsLimit').textContent=money(capacity);
+  $('#cardsUsed').textContent=money(used);
+  $('#cardsAvailable').textContent=money(Math.max(0,capacity-used));
+  $('#cardsInvoice').textContent=money(invoice);
   $('#invoiceMonthLabel').textContent=monthLabel(selectedMonth);
-  $('#cardsGrid').innerHTML=appState.cards.map(function(c){
-    const committed=cardCommitted(c), inv=cardInvoice(c,selectedMonth), lim=Number(c.limit||0), pct=lim?committed/lim*100:0;
-    return '<article class="credit-card" style="--card-bg:'+esc(c.color||'#141b34')+'"><div class="credit-top"><span>'+esc(c.brand||'Cartão')+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+c.id+'">✎</button><button class="row-btn delete-card" data-id="'+c.id+'">×</button></div></div><h4>'+esc(c.name)+'</h4><div class="credit-limit"><span>Fatura de '+shortMonth(selectedMonth)+'</span><strong>'+money(inv)+'</strong></div><div class="progress"><i style="width:'+Math.min(100,pct)+'%"></i></div><div class="credit-meta"><span>Limite '+money(lim)+'</span><span>Disponível '+money(Math.max(0,lim-committed))+'</span></div><small>Fecha dia '+Number(c.closingDay||1)+' · vence dia '+Number(c.dueDay||10)+'</small></article>';
+
+  $('#cardsGrid').innerHTML=appState.cards.map(function(card){
+    const benefit=isBenefitCard(card);
+    const limit=Number(card.limit || 0);
+    const metric=benefit ? cardPeriodUsed(card,selectedMonth) : cardCommitted(card);
+    const periodValue=benefit ? metric : cardInvoice(card,selectedMonth);
+    const pct=limit>0 ? Math.min(100,(metric/limit)*100) : 0;
+    const type=card.cardType || 'credit';
+
+    const footer=benefit
+      ? 'Benefício · '+cardTypeLabel(type)
+      : 'Fecha dia '+Number(card.closingDay||1)+' · vence dia '+Number(card.dueDay||10);
+
+    return '<article class="credit-card animated-card '+(benefit?'benefit-card':'')+'" style="--card-bg:'+esc(card.color||'#141b34')+'">'+
+      '<div class="credit-top"><span>'+esc(card.brand||'Cartão')+' · '+esc(cardTypeLabel(type))+'</span><div class="card-menu"><button class="row-btn edit-card" data-id="'+card.id+'">✎</button><button class="row-btn delete-card" data-id="'+card.id+'">×</button></div></div>'+
+      '<h4>'+esc(card.name)+'</h4>'+
+      '<div class="credit-limit"><span>'+(benefit?'Consumo de '+shortMonth(selectedMonth):'Fatura de '+shortMonth(selectedMonth))+'</span><strong>'+money(periodValue)+'</strong></div>'+
+      '<div class="progress"><i style="width:'+pct+'%"></i></div>'+
+      '<div class="credit-meta"><span>'+(benefit?'Saldo/crédito ':'Limite ')+money(limit)+'</span><span>Disponível '+money(Math.max(0,limit-metric))+'</span></div>'+
+      '<small>'+esc(footer)+'</small>'+
+    '</article>';
   }).join('');
-  $$('.edit-card').forEach(function(b){b.onclick=function(){const x=getCard(b.dataset.id);if(x)openModal('card',x);};});
-  $$('.delete-card').forEach(function(b){b.onclick=function(){deleteCard(b.dataset.id);};});
-  const rows=appState.transactions.filter(function(t){return t.cardId&&t.type==='expense'&&(t.invoiceMonth||t.date.slice(0,7))===selectedMonth;}).sort(sortTxDesc);
-  $('#cardInvoiceTable').innerHTML=rows.length?rows.map(function(t){
-    const c=getCard(t.cardId);
-    const parcel=t.installmentCount ? t.installmentNo+'/'+t.installmentCount : '1/1';
-    return '<tr><td>'+esc(t.description)+'</td><td>'+esc(c?c.name:'Cartão removido')+'</td><td><span class="installment-pill">'+parcel+'</span></td><td>'+money(t.purchaseTotal||t.amount)+'</td><td>'+dateBR(t.date)+'</td><td class="right amount expense">'+money(t.amount)+'</td></tr>';
-  }).join(''):emptyTableRow(6,'Nenhuma compra nesta fatura.');
+
+  $$('.edit-card').forEach(function(button){
+    button.onclick=function(){
+      const card=getCard(button.dataset.id);
+      if(card) openModal('card',card);
+    };
+  });
+
+  $$('.delete-card').forEach(function(button){
+    button.onclick=function(){deleteCard(button.dataset.id);};
+  });
+
+  const rows=appState.transactions
+    .filter(function(t){
+      const card=getCard(t.cardId);
+      return card
+        && !isBenefitCard(card)
+        && t.type==='expense'
+        && (t.invoiceMonth || t.date.slice(0,7))===selectedMonth;
+    })
+    .sort(sortTxDesc);
+
+  $('#cardInvoiceTable').innerHTML=rows.length
+    ? rows.map(function(t){
+        const card=getCard(t.cardId);
+        const parcel=t.installmentCount ? t.installmentNo+'/'+t.installmentCount : '1/1';
+        return '<tr><td>'+esc(t.description)+'</td><td>'+esc(card?card.name:'Cartão removido')+'</td><td><span class="installment-pill">'+parcel+'</span></td><td>'+money(t.purchaseTotal||t.amount)+'</td><td>'+dateBR(t.date)+'</td><td class="right amount expense">'+money(t.amount)+'</td></tr>';
+      }).join('')
+    : emptyTableRow(6,'Nenhuma compra de crédito nesta fatura.');
 }
 
 async function saveCardForm(e){
-  return withLoading("Salvando cartão…","Atualizando limite, fechamento e vencimento.",async function(){
-  e.preventDefault();
-  const id=$('#cardId').value;
-  const record={id:id||uid('card'),name:$('#cardName').value.trim(),brand:$('#cardBrand').value,limit:Number($('#cardLimit').value||0),closingDay:Math.max(1,Math.min(31,Number($('#cardClosingDay').value))),dueDay:Math.max(1,Math.min(31,Number($('#cardDueDay').value))),accountId:$('#cardAccount').value||'',color:$('#cardColor').value,updatedAt:new Date().toISOString()};
-  if(!record.name)return toast('Informe o nome do cartão.','error');
-  const idx=appState.cards.findIndex(function(c){return c.id===id;});
-  if(idx>=0)appState.cards[idx]=Object.assign({},appState.cards[idx],record);else appState.cards.push(record);
-  logAudit(idx>=0?'card-update':'card-create',record.name);
-  await commitStateChange(); toast('Cartão salvo.','success');
+  return withLoading('Salvando cartão…','Atualizando cartão, benefício e limites.',async function(){
+    e.preventDefault();
 
+    const id=$('#cardId').value;
+    const cardType=$('#cardType').value || 'credit';
+    const benefit=cardType!=='credit';
+
+    const record={
+      id:id || uid('card'),
+      name:$('#cardName').value.trim(),
+      cardType,
+      brand:$('#cardBrand').value,
+      limit:Number($('#cardLimit').value || 0),
+      closingDay:benefit ? 0 : Math.max(1,Math.min(31,Number($('#cardClosingDay').value || 3))),
+      dueDay:benefit ? 0 : Math.max(1,Math.min(31,Number($('#cardDueDay').value || 10))),
+      accountId:benefit ? '' : ($('#cardAccount').value || ''),
+      color:$('#cardColor').value,
+      updatedAt:new Date().toISOString()
+    };
+
+    if(!record.name){
+      toast('Informe o nome do cartão.','error');
+      return;
+    }
+
+    const index=appState.cards.findIndex(function(card){return card.id===id;});
+    if(index>=0){
+      appState.cards[index]=Object.assign({},appState.cards[index],record);
+    }else{
+      appState.cards.push(record);
+    }
+
+    logAudit(index>=0?'card-update':'card-create',record.name);
+    await commitStateChange();
+    toast(benefit?'Cartão de benefício salvo.':'Cartão de crédito salvo.','success');
   });
 }
+
 async function deleteCard(id){
   const c=getCard(id);if(!c)return;
   if(!await confirmDialog('Excluir cartão?','As compras e parcelas já registradas serão mantidas no histórico.'))return;

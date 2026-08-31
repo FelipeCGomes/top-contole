@@ -263,16 +263,26 @@ async function createFamily(name){
   const clean=String(name || '').trim();
   if(clean.length<2) throw new Error('Informe um nome para a família.');
 
-  const currentProfile=await getOwnProfile();
-  if(currentProfile?.familyId) throw new Error('Você já participa de uma família.');
+  // Antes de bloquear a criação, resolve vínculos antigos ou incompletos.
+  const context=await getFamilyContext();
+  if(context.family){
+    throw new Error('Você já administra ou participa da família "'+(context.family.name || 'Família')+'".');
+  }
+
+  const currentProfile=context.profile || await getOwnProfile();
+  if(currentProfile?.familyId){
+    throw new Error('Seu perfil ainda possui um vínculo familiar que não pôde ser validado. Atualize a página e tente novamente.');
+  }
 
   const familyId=crypto.randomUUID ? crypto.randomUUID() : 'family-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+
   await setDoc(doc(db,'families',familyId),{
     name:clean,
     ownerUid:currentUser.uid,
     createdAt:serverTimestamp(),
     updatedAt:serverTimestamp()
   });
+
   await setDoc(doc(db,'families',familyId,'members',currentUser.uid),{
     uid:currentUser.uid,
     displayName:currentUser.displayName || '',
@@ -283,7 +293,12 @@ async function createFamily(name){
     joinedAt:serverTimestamp(),
     updatedAt:serverTimestamp()
   });
-  await setDoc(profileRef(),{familyId,role:'admin',updatedAt:serverTimestamp()},{merge:true});
+
+  await setDoc(profileRef(),{
+    familyId,
+    role:'admin',
+    updatedAt:serverTimestamp()
+  },{merge:true});
 
   return getFamilyContext();
 }
@@ -499,28 +514,139 @@ async function respondFamilyInvitation(requestId,accept){
 
 async function getFamilyContext(){
   requireUser();
-  const profile=await getOwnProfile();
-  if(!profile?.familyId) return {profile,family:null,members:[]};
+  let profile=await getOwnProfile();
 
-  const familySnap=await getDoc(doc(db,'families',profile.familyId));
-  if(!familySnap.exists()) return {profile:{...profile,familyId:'',role:''},family:null,members:[]};
+  if(!profile?.familyId){
+    return {profile,family:null,members:[],repaired:false};
+  }
+
+  const familyId=profile.familyId;
+  const ownMemberRef=doc(db,'families',familyId,'members',currentUser.uid);
+
+  let ownMemberSnap;
+  try{
+    ownMemberSnap=await getDoc(ownMemberRef);
+  }catch(error){
+    // Não alteramos o perfil quando as regras do Firestore estão bloqueando
+    // a leitura. Isso evita apagar um vínculo válido por causa de rules antigas.
+    throw new Error('Não foi possível validar seu vínculo familiar. Verifique se as regras atuais do Firestore foram publicadas. Detalhe: '+(error.message || error));
+  }
+
+  if(ownMemberSnap.exists()){
+    const ownMember=ownMemberSnap.data() || {};
+    const status=ownMember.status || 'active';
+
+    // O perfil só deve carregar familyId quando o vínculo está realmente ativo.
+    if(status!=='active'){
+      await setDoc(profileRef(),{
+        familyId:'',
+        role:'',
+        updatedAt:serverTimestamp()
+      },{merge:true});
+      profile={...profile,familyId:'',role:''};
+      return {profile,family:null,members:[],repaired:true,previousStatus:status};
+    }
+  }
+
+  let familySnap;
+  try{
+    familySnap=await getDoc(doc(db,'families',familyId));
+  }catch(error){
+    // Se existe vínculo ativo, uma negativa aqui representa configuração de
+    // segurança/rules, e não ausência de família.
+    if(ownMemberSnap.exists()){
+      throw new Error('Sua família existe, mas o Firestore não permitiu carregá-la. Publique a versão atual de firestore.rules. Detalhe: '+(error.message || error));
+    }
+
+    // Sem documento de membro, tentamos ler a família para descobrir se o
+    // usuário é um proprietário antigo cujo member doc ficou incompleto.
+    throw new Error('Seu perfil aponta para uma família, mas o acesso ao vínculo foi negado. Publique as regras atuais do Firestore e tente novamente. Detalhe: '+(error.message || error));
+  }
+
+  // familyId antigo apontando para documento removido: limpa automaticamente.
+  if(!familySnap.exists()){
+    await setDoc(profileRef(),{
+      familyId:'',
+      role:'',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    profile={...profile,familyId:'',role:''};
+    return {profile,family:null,members:[],repaired:true,orphaned:true};
+  }
+
+  const family={id:familySnap.id,...familySnap.data()};
+  const isOwner=family.ownerUid===currentUser.uid;
+
+  // Corrige famílias criadas em versões antigas nas quais o documento
+  // principal foi salvo, mas o vínculo do administrador não foi concluído.
+  if(isOwner && !ownMemberSnap.exists()){
+    await setDoc(ownMemberRef,{
+      uid:currentUser.uid,
+      displayName:currentUser.displayName || '',
+      email:normalizeEmail(currentUser.email),
+      photoURL:currentUser.photoURL || '',
+      role:'admin',
+      status:'active',
+      joinedAt:serverTimestamp(),
+      repairedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+
+    await setDoc(profileRef(),{
+      familyId,
+      role:'admin',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+
+    profile={...profile,familyId,role:'admin'};
+    ownMemberSnap=await getDoc(ownMemberRef);
+  }
+
+  // Se não é proprietário e também não existe vínculo ativo, o familyId do
+  // perfil ficou órfão e pode ser removido com segurança.
+  if(!isOwner && !ownMemberSnap.exists()){
+    await setDoc(profileRef(),{
+      familyId:'',
+      role:'',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    profile={...profile,familyId:'',role:''};
+    return {profile,family:null,members:[],repaired:true,orphaned:true};
+  }
+
+  const ownMember=ownMemberSnap.exists()?ownMemberSnap.data():null;
+  if(ownMember && (ownMember.status || 'active')!=='active'){
+    await setDoc(profileRef(),{
+      familyId:'',
+      role:'',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    profile={...profile,familyId:'',role:''};
+    return {profile,family:null,members:[],repaired:true,previousStatus:ownMember.status};
+  }
+
+  const expectedRole=isOwner?'admin':(ownMember?.role || 'member');
+  if(profile.role!==expectedRole){
+    await setDoc(profileRef(),{
+      familyId,
+      role:expectedRole,
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    profile={...profile,role:expectedRole};
+  }
 
   let memberSnaps;
-  if(profile.role==='admin'){
-    memberSnaps=await getDocs(collection(db,'families',profile.familyId,'members'));
+  if(expectedRole==='admin'){
+    memberSnaps=await getDocs(collection(db,'families',familyId,'members'));
   }else{
     memberSnaps=await getDocs(query(
-      collection(db,'families',profile.familyId,'members'),
+      collection(db,'families',familyId,'members'),
       where('status','==','active')
     ));
   }
 
   const members=memberSnaps.docs.map(d=>({id:d.id,...d.data()}));
-  return {
-    profile,
-    family:{id:familySnap.id,...familySnap.data()},
-    members
-  };
+  return {profile,family,members,repaired:false};
 }
 
 function watchFamilyMembers(familyId,callback){

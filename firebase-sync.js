@@ -733,9 +733,9 @@ function watchFamilyShoppingLists(familyId,callback){
   return onSnapshot(familyShoppingListsRef(familyId),snapshot=>{
     const lists=snapshot.docs.map(d=>({id:d.id,...d.data()}));
     lists.sort((a,b)=>{
-      const av=String(a.clientUpdatedAt || '');
-      const bv=String(b.clientUpdatedAt || '');
-      return bv.localeCompare(av) || String(a.name || '').localeCompare(String(b.name || ''));
+      const al=String(a.store || a.name || '').toLocaleLowerCase('pt-BR');
+      const bl=String(b.store || b.name || '').toLocaleLowerCase('pt-BR');
+      return al.localeCompare(bl,'pt-BR') || String(a.name || '').localeCompare(String(b.name || ''),'pt-BR');
     });
     callback(lists);
   },error=>{
@@ -788,6 +788,11 @@ async function saveFamilyShoppingItem(familyId,listId,item){
   }
 
   await setDoc(ref,payload,{merge:true});
+  await setDoc(familyShoppingListRef(familyId,listId),{
+    updatedBy:currentUser.uid,
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt:new Date().toISOString()
+  },{merge:true});
   return {id:item.id,...payload};
 }
 
@@ -795,6 +800,38 @@ async function deleteFamilyShoppingItem(familyId,listId,itemId){
   requireUser();
   if(!familyId || !listId || !itemId) return;
   await deleteDoc(familyShoppingItemRef(familyId,listId,itemId));
+  await setDoc(familyShoppingListRef(familyId,listId),{
+    updatedBy:currentUser.uid,
+    updatedAt:serverTimestamp(),
+    clientUpdatedAt:new Date().toISOString()
+  },{merge:true});
+}
+
+
+async function getFamilyShoppingComparisonData(familyId){
+  requireUser();
+  if(!familyId) return [];
+
+  const listSnaps=await getDocs(familyShoppingListsRef(familyId));
+  const lists=await Promise.all(listSnaps.docs.map(async listDoc=>{
+    const list={id:listDoc.id,...listDoc.data()};
+    const itemSnaps=await getDocs(familyShoppingItemsRef(familyId,listDoc.id));
+    list.items=itemSnaps.docs.map(itemDoc=>({id:itemDoc.id,...itemDoc.data()}));
+    list.items.sort((a,b)=>{
+      const ao=Number(a.order || 0);
+      const bo=Number(b.order || 0);
+      return ao-bo || String(a.product || '').localeCompare(String(b.product || ''),'pt-BR');
+    });
+    return list;
+  }));
+
+  lists.sort((a,b)=>{
+    const al=String(a.store || a.name || '').toLocaleLowerCase('pt-BR');
+    const bl=String(b.store || b.name || '').toLocaleLowerCase('pt-BR');
+    return al.localeCompare(bl,'pt-BR') || String(a.name || '').localeCompare(String(b.name || ''),'pt-BR');
+  });
+
+  return lists;
 }
 
 async function deleteFamilyShoppingList(familyId,listId){
@@ -1105,6 +1142,7 @@ globalThis.StopGastosCloud={
   createFamilyShoppingList,
   watchFamilyShoppingLists,
   watchFamilyShoppingItems,
+  getFamilyShoppingComparisonData,
   saveFamilyShoppingItem,
   deleteFamilyShoppingItem,
   deleteFamilyShoppingList,

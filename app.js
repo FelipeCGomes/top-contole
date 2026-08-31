@@ -1767,6 +1767,19 @@ async function cloudSignIn(){
     .map(id=>$('#'+id))
     .filter(Boolean);
 
+  const cloud=window.StopGastosCloud;
+
+  if(!cloud || !cloud.configured){
+    toast('Firebase ainda não está configurado ou não foi carregado. Atualize a página e tente novamente.','error');
+    return;
+  }
+
+  if(!cloud.ready){
+    setCloudStatus('syncing','Firebase ainda está inicializando…');
+    toast('O Firebase ainda está inicializando. Aguarde um instante e toque novamente.','info');
+    return;
+  }
+
   buttons.forEach(function(btn){
     btn.disabled=true;
     btn.dataset.originalText=btn.dataset.originalText || btn.innerHTML;
@@ -1776,14 +1789,7 @@ async function cloudSignIn(){
   setCloudStatus('syncing','Abrindo autenticação do Google…');
 
   try{
-    const cloud=await waitForCloudReady();
-
-    if(!cloud || !cloud.configured){
-      toast('A integração Firebase ainda precisa receber a configuração do projeto.','info');
-      navigate('settings');
-      return;
-    }
-
+    // Chamada direta: preserva a ativação do toque/clique necessária ao popup.
     await cloud.signInGoogle();
   }catch(err){
     console.error('Stop Gastos Google login:',err);

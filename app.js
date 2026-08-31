@@ -2863,6 +2863,9 @@ function bindCloudEvents(){
   const syncBtn=$('#cloudSyncNowBtn');
   if(syncBtn) syncBtn.addEventListener('click',forceCloudSync);
 
+  const testFirestoreBtn=$('#testFirestoreBtn');
+  if(testFirestoreBtn) testFirestoreBtn.addEventListener('click',testFirestoreFromUi);
+
   const enablePushBtn=$('#enableNotificationsBtn');
   if(enablePushBtn) enablePushBtn.addEventListener('click',enableCloudNotifications);
 
@@ -3135,6 +3138,68 @@ function queueCloudPush(state,immediate){
   },450);
 
   return Promise.resolve({queued:true});
+}
+
+
+async function testFirestoreFromUi(){
+  return withLoading(
+    'Testando Firestore…',
+    'Gravando e relendo seu estado diretamente no Firebase.',
+    async function(){
+      const cloud=window.StopGastosCloud;
+
+      if(!cloud || !cloud.configured){
+        toast('Firebase não está configurado neste aplicativo.','error');
+        return;
+      }
+      if(!cloud.ready){
+        toast('Firebase ainda está inicializando. Tente novamente em alguns segundos.','info');
+        return;
+      }
+      if(!cloud.isSignedIn() || !cloudUser){
+        toast('Entre com Google antes de testar o Firestore.','info');
+        return;
+      }
+      if(!appState){
+        toast('Nenhum estado carregado para testar.','error');
+        return;
+      }
+
+      try{
+        setCloudStatus('syncing','Testando gravação em users/'+cloudUser.uid+'/state/main…');
+
+        const pushed=await cloud.pushState(clone(appState));
+        const remote=await cloud.pullState(cloudUser.uid);
+
+        if(!pushed?.synced || !remote?.state){
+          throw new Error('A gravação não pôde ser confirmada pelo Firestore.');
+        }
+
+        cloudLastSyncedAt=new Date();
+        setCloudStatus(
+          'synced',
+          'Firestore OK · users/'+cloudUser.uid+'/state/main'
+        );
+
+        toast('Firestore OK. Os dados foram gravados e relidos com sucesso.','success');
+      }catch(err){
+        const code=String(err?.code || '');
+        const message=String(err?.message || err || 'Erro desconhecido');
+        const denied=code.includes('permission-denied')
+          || message.toLowerCase().includes('insufficient permissions');
+
+        console.error('Stop Gastos Firestore diagnostic:',err);
+
+        if(denied){
+          setCloudStatus('error','Firestore bloqueado pelas regras de segurança');
+          toast('Firestore recusou a gravação: publique o firestore.rules atualizado no Firebase Console.','error');
+        }else{
+          setCloudStatus('error','Falha no teste Firestore · '+message.slice(0,120));
+          toast('Teste Firestore falhou: '+(code?code+' · ':'')+message,'error');
+        }
+      }
+    }
+  );
 }
 
 async function forceCloudSync(showToast=true){

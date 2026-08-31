@@ -1301,7 +1301,7 @@ function renderRecurring(){
     }
 
     const installmentInfo=r.payment==='Cartão de crédito' && count>1
-      ? '<small class="rec-installment-info">'+count+' parcelas de aproximadamente '+money(Number(r.amount)/count)+'</small>'
+      ? '<small class="rec-installment-info">Série única · '+count+' parcelas de aproximadamente '+money(Number(r.amount)/count)+'</small>'
       : '';
 
     return '<article class="rec-card animated-card">'+
@@ -2634,6 +2634,8 @@ function replaceTransactionInstallmentPlan(existing,base,total,count,card){
   const firstInvoice=credit ? cardInvoiceMonth(base.purchaseDate,card) : '';
   const recurrenceBase=existing?.recurrenceBaseKey
     || (existing?.sourceRecurringId ? (existing.recurrenceKey || '') : '');
+  const sourceRecurringId=existing?.sourceRecurringId || base.sourceRecurringId || '';
+  const sourceType=existing?.sourceType || base.sourceType || '';
 
   const records=amounts.map(function(amount,index){
     const no=index+1;
@@ -2658,6 +2660,8 @@ function replaceTransactionInstallmentPlan(existing,base,total,count,card){
       installmentNo:no,
       installmentCount:effectiveCount,
       installmentAmount:amount,
+      sourceRecurringId:previousRecord.sourceRecurringId || sourceRecurringId,
+      sourceType:previousRecord.sourceType || sourceType,
       updatedAt:new Date().toISOString(),
       createdAt:previousRecord.createdAt || existing?.createdAt || new Date().toISOString()
     });
@@ -2683,6 +2687,24 @@ function replaceTransactionInstallmentPlan(existing,base,total,count,card){
 }
 
 
+function recurringPlanAnchorMonth(recurring,fallbackMonth){
+  if(!recurring) return fallbackMonth;
+  if(recurring.installmentStartMonth) return recurring.installmentStartMonth;
+
+  const existingMonths=(appState?.transactions || [])
+    .filter(function(t){
+      return t.sourceRecurringId===recurring.id
+        && normalizedInstallmentCount(t.installmentCount || 1)>1;
+    })
+    .map(function(t){
+      return String(t.purchaseDate || t.date || '').slice(0,7);
+    })
+    .filter(Boolean)
+    .sort();
+
+  return existingMonths[0] || fallbackMonth;
+}
+
 function syncSourceFromTransactionEdit(existing,base,total,requestedInstallments){
   if(!existing || !existing.sourceRecurringId || !appState) return null;
 
@@ -2701,6 +2723,10 @@ function syncSourceFromTransactionEdit(existing,base,total,requestedInstallments
     recurring.installmentCount=base.payment==='Cartão de crédito'
       ? normalizedInstallmentCount(requestedInstallments)
       : 1;
+    recurring.installmentStartMonth=base.payment==='Cartão de crédito'
+      && recurring.installmentCount>1
+      ? String(base.purchaseDate || base.date || '').slice(0,7)
+      : '';
     recurring.updatedAt=new Date().toISOString();
 
     existing.sourceType='recurringExpense';
@@ -2902,6 +2928,16 @@ async function saveRecurringForm(e){
       return;
     }
 
+    const previous=id
+      ? appState.recurring.find(function(r){return r.id===id;})
+      : null;
+    const previousAnchor=previous
+      ? recurringPlanAnchorMonth(previous,selectedMonth)
+      : selectedMonth;
+    const installmentStartMonth=isCredit && installmentCount>1
+      ? (previous?.installmentStartMonth || previousAnchor || selectedMonth)
+      : '';
+
     const record={
       id:id || uid('rec'),
       type:'expense',
@@ -2913,6 +2949,7 @@ async function saveRecurringForm(e){
       payment,
       cardId,
       installmentCount,
+      installmentStartMonth,
       active:$('#recActive').checked,
       updatedAt:new Date().toISOString()
     };
@@ -2923,7 +2960,6 @@ async function saveRecurringForm(e){
     }
 
     const index=appState.recurring.findIndex(function(r){return r.id===id;});
-    const previous=index>=0 ? appState.recurring[index] : null;
 
     if(index>=0){
       appState.recurring[index]=Object.assign({},previous,record);
@@ -2931,7 +2967,8 @@ async function saveRecurringForm(e){
       appState.recurring.push(record);
     }
 
-    syncRecurringTransactionForMonth(record,selectedMonth);
+    const syncMonth=installmentStartMonth || previousAnchor || selectedMonth;
+    syncRecurringTransactionForMonth(record,syncMonth);
 
     logAudit(
       index>=0?'recurring-update':'recurring-create',
@@ -3043,7 +3080,25 @@ function ensureRecurringForMonth(monthKey){
 
   appState.recurring
     .filter(function(r){return r && r.active!==false && r.type!=='income';})
-    .forEach(function(r){syncRecurringTransactionForMonth(r,monthKey);});
+    .forEach(function(r){
+      const card=r.cardId ? getCard(r.cardId) : null;
+      const finiteInstallment=!!(
+        card
+        && r.payment==='Cartão de crédito'
+        && !isBenefitCard(card)
+        && normalizedInstallmentCount(r.installmentCount || 1)>1
+      );
+
+      const targetMonth=finiteInstallment
+        ? recurringPlanAnchorMonth(r,monthKey)
+        : monthKey;
+
+      if(finiteInstallment && !r.installmentStartMonth){
+        r.installmentStartMonth=targetMonth;
+      }
+
+      syncRecurringTransactionForMonth(r,targetMonth);
+    });
 
   appState.incomeSources
     .filter(function(source){return source && source.active!==false;})

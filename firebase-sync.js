@@ -26,6 +26,7 @@ import {
   onSnapshot,
   query,
   where,
+  writeBatch,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 import {
@@ -694,6 +695,103 @@ async function removeFamilyMember(uid){
   await setDoc(doc(db,'users',uid,'profile','main'),{familyId:'',role:'',updatedAt:serverTimestamp()},{merge:true});
 }
 
+
+async function getAccountDeletionStatus(){
+  requireUser();
+  const context=await getFamilyContext();
+  if(!context.family){
+    return {blocked:false,isOwner:false,otherLinks:[],transferCandidates:[]};
+  }
+
+  const isOwner=context.family.ownerUid===currentUser.uid;
+  const otherLinks=(context.members || []).filter(member=>member.uid!==currentUser.uid);
+  const transferCandidates=otherLinks.filter(member=>(member.status || 'active')==='active');
+
+  return {
+    blocked:isOwner && otherLinks.length>0,
+    isOwner,
+    familyId:context.family.id,
+    familyName:context.family.name || 'Família',
+    otherLinks,
+    transferCandidates
+  };
+}
+
+async function transferFamilyOwnership(targetUid){
+  requireUser();
+  const context=await getFamilyContext();
+
+  if(!context.family) throw new Error('Você não participa de uma família.');
+  if(context.family.ownerUid!==currentUser.uid) throw new Error('Somente o proprietário atual pode transferir a administração.');
+  if(targetUid===currentUser.uid) throw new Error('Você já é o administrador da família.');
+
+  const target=(context.members || []).find(member=>member.uid===targetUid);
+  if(!target) throw new Error('Membro não encontrado.');
+  if((target.status || 'active')!=='active') throw new Error('A administração só pode ser transferida para um membro ativo.');
+
+  const familyId=context.family.id;
+  const batch=writeBatch(db);
+
+  batch.set(doc(db,'users',targetUid,'profile','main'),{
+    familyId,
+    role:'admin',
+    updatedAt:serverTimestamp()
+  },{merge:true});
+
+  batch.set(doc(db,'families',familyId,'members',targetUid),{
+    role:'admin',
+    promotedAt:serverTimestamp(),
+    updatedAt:serverTimestamp()
+  },{merge:true});
+
+  batch.set(profileRef(),{
+    familyId,
+    role:'member',
+    updatedAt:serverTimestamp()
+  },{merge:true});
+
+  batch.set(doc(db,'families',familyId,'members',currentUser.uid),{
+    role:'member',
+    updatedAt:serverTimestamp()
+  },{merge:true});
+
+  batch.set(doc(db,'families',familyId),{
+    ownerUid:targetUid,
+    updatedAt:serverTimestamp()
+  },{merge:true});
+
+  await batch.commit();
+
+  return {
+    familyId,
+    previousOwnerUid:currentUser.uid,
+    newOwnerUid:targetUid,
+    newOwnerEmail:target.email || '',
+    newOwnerName:target.displayName || target.email || 'Novo administrador'
+  };
+}
+
+async function authenticationIsRecent(maxAgeMs=4*60*1000){
+  requireUser();
+  try{
+    const result=await currentUser.getIdTokenResult();
+    const authTime=Date.parse(result.authTime || '');
+    return Number.isFinite(authTime) && (Date.now()-authTime)<=maxAgeMs;
+  }catch(error){
+    return false;
+  }
+}
+
+async function authorizeAccountDeletion(){
+  requireUser();
+  const provider=new GoogleAuthProvider();
+  if(currentUser.email){
+    provider.setCustomParameters({login_hint:currentUser.email});
+  }
+  await reauthenticateWithPopup(currentUser,provider);
+  return {authorized:true};
+}
+
 async function leaveFamily(){
   requireUser();
   const context=await getFamilyContext();
@@ -710,27 +808,37 @@ async function deleteCurrentAccount(){
   const user=currentUser;
   const uid=user.uid;
   const email=normalizeEmail(user.email);
+  const deletionStatus=await getAccountDeletionStatus();
 
-  // Exclusão de conta é uma ação sensível. Reautentica antes de remover dados.
-  const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({prompt:'select_account'});
-  await reauthenticateWithPopup(user,provider);
+  if(deletionStatus.blocked){
+    const active=deletionStatus.otherLinks.filter(member=>(member.status || 'active')==='active').length;
+    const pending=deletionStatus.otherLinks.filter(member=>member.status==='pending').length;
+    const declined=deletionStatus.otherLinks.filter(member=>member.status==='declined').length;
+    const parts=[];
+    if(active) parts.push(active+' ativo'+(active===1?'':'s'));
+    if(pending) parts.push(pending+' pendente'+(pending===1?'':'s'));
+    if(declined) parts.push(declined+' recusado'+(declined===1?'':'s'));
+
+    const error=new Error(
+      'Você é o proprietário da família e ainda existem outros vínculos ('+parts.join(', ')+'). '+
+      (deletionStatus.transferCandidates.length
+        ? 'Remova todos os vínculos ou transfira a administração para um membro ativo antes de excluir sua conta.'
+        : 'Remova todos os vínculos antes de excluir sua conta.')
+    );
+    error.code='family/owner-has-members';
+    error.details=deletionStatus;
+    throw error;
+  }
+
+  // Verifica a atualidade da autenticação antes de apagar qualquer dado.
+  // Se a sessão for antiga, a UI pedirá uma autorização explícita e tentará novamente.
+  if(!(await authenticationIsRecent())){
+    const error=new Error('Por segurança, confirme sua identidade Google para autorizar a exclusão.');
+    error.code='auth/requires-delete-authorization';
+    throw error;
+  }
 
   const context=await getFamilyContext();
-
-  if(context.family && context.family.ownerUid===uid){
-    const otherLinks=(context.members || []).filter(member=>member.uid!==uid);
-    if(otherLinks.length){
-      const active=otherLinks.filter(member=>(member.status || 'active')==='active').length;
-      const pending=otherLinks.filter(member=>member.status==='pending').length;
-      const declined=otherLinks.filter(member=>member.status==='declined').length;
-      const parts=[];
-      if(active) parts.push(active+' ativo'+(active===1?'':'s'));
-      if(pending) parts.push(pending+' pendente'+(pending===1?'':'s'));
-      if(declined) parts.push(declined+' recusado'+(declined===1?'':'s'));
-      throw new Error('Você é o proprietário da família e ainda existem outros vínculos ('+parts.join(', ')+'). Remova esses vínculos antes de excluir sua conta.');
-    }
-  }
 
   // Remove solicitações recebidas pelo usuário.
   const incoming=await getDocs(query(
@@ -741,7 +849,7 @@ async function deleteCurrentAccount(){
     await deleteDoc(requestDoc.ref);
   }
 
-  // Se for administrador, remove convites enviados antes de apagar a família.
+  // Se ainda for o único proprietário da família, remove solicitações e a família vazia.
   if(context.family && context.family.ownerUid===uid){
     const outgoing=await getDocs(query(
       collection(db,'familyRequests'),
@@ -777,7 +885,6 @@ async function deleteCurrentAccount(){
 
   return {uid,email};
 }
-
 
 async function enableNotifications(){
   requireUser();
@@ -835,7 +942,10 @@ globalThis.StopGastosCloud={
   watchFamilyMembers,
   getFamilyStates,
   removeFamilyMember,
+  getAccountDeletionStatus,
+  transferFamilyOwnership,
   leaveFamily,
+  authorizeAccountDeletion,
   deleteCurrentAccount,
   enableNotifications
 };

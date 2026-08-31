@@ -1560,6 +1560,13 @@ async function loadDemoData(){
   if(!appState.cards.length){
     appState.cards.push({id:uid('card'),name:'Cartão principal',brand:'Mastercard',limit:5000,closingDay:3,dueDay:10,accountId:appState.accounts[0]?appState.accounts[0].id:'',color:'#141b34'});
   }
+  if(appState.cards.length){
+    appState.recurring.forEach(function(rec){
+      if(rec.payment==='Cartão de crédito' && !rec.cardId){
+        rec.cardId=appState.cards[0].id;
+      }
+    });
+  }
   if(!appState.bills.length){
     appState.bills.push(
       {id:uid('bill'),type:'expense',description:'Energia elétrica',amount:210,dueDate:localDateKey(safeMonthDate(m0,28)),category:'moradia',accountId:appState.accounts[0]?appState.accounts[0].id:'',paid:false,notes:'Demonstração'},

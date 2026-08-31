@@ -158,9 +158,18 @@ function notifyReady(){
 }
 
 async function signInGoogle(){
-  if(!auth) throw new Error('Firebase ainda não está configurado.');
+  if(!auth) throw new Error('Firebase Authentication ainda está inicializando.');
+
   const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({prompt:'select_account'});
+  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    || (window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+
+  // Em celular, redirect é mais confiável e não depende de popup.
+  if(isMobile){
+    await signInWithRedirect(auth,provider);
+    return null;
+  }
+
   try{
     const result=await signInWithPopup(auth,provider);
     return publicUser(result.user);

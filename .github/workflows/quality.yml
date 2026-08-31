@@ -149,6 +149,32 @@ jobs:
           console.log('Collection selectors and state shape OK');
           NODE
 
+      - name: Validate save workflow
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('app.js','utf8');
+          const names = [...js.matchAll(/async function (save[A-Za-z0-9_]+Form)\(/g)].map(m=>m[1]);
+          const failures = [];
+
+          for (const name of names) {
+            const start = js.indexOf('async function ' + name + '(');
+            const next = js.indexOf('\nasync function ', start + 1);
+            const body = js.slice(start, next < 0 ? js.length : next);
+
+            if (!body.includes('withLoading(')) failures.push(name + ': missing loader');
+            if (!body.includes('commitStateChange(')) failures.push(name + ': missing optimistic commit');
+            if (body.includes('await saveVault();')) failures.push(name + ': direct saveVault call');
+          }
+
+          if (failures.length) {
+            console.error('Save workflow validation failed:', failures);
+            process.exit(1);
+          }
+
+          console.log('Save workflow OK:', names.length, 'forms');
+          NODE
+
       - name: Validate CSS structure
         run: |
           node - <<'NODE'

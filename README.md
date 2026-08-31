@@ -62,6 +62,11 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Cards com produtos, quantidade de itens, valor médio por item precificado e valor total
 - Salvamento local imediato nas listas pessoais e sincronização Firebase nas listas familiares
 - Layout responsivo otimizado para uso no celular dentro do mercado
+- Dashboard de comparação entre mercados/localidades
+- Ranking por cesta comparável, usando apenas produtos com preço em todos os mercados comparados
+- Comparação produto a produto com menor preço, maior preço e economia potencial
+- Indicador de melhor mercado, economia versus o mais caro e quantidade de produtos comparáveis
+- Simulação de compra inteligente, combinando o menor preço de cada produto
 - Exclusão de lista compartilhada restrita ao criador ou administrador da família
 
 ## Experiência e conta

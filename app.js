@@ -1196,12 +1196,28 @@ function setupFamilyShoppingItemsWatcher(cloud){
     nextId,
     function(items){
       const target=familyShoppingLists.find(function(list){return list.id===nextId;});
-      if(target){
-        target.items=(items || []).map(function(item,index){
-          return Object.assign({order:index+1},item);
-        });
+      if(!target) return;
+
+      const previous=Array.isArray(target.items) ? target.items : [];
+      const incoming=(items || []).map(function(item,index){
+        return Object.assign({order:index+1},item);
+      });
+
+      const changed=previous.length!==incoming.length || incoming.some(function(item){
+        const old=previous.find(function(x){return x.id===item.id;});
+        return !old
+          || String(old.product || '')!==String(item.product || '')
+          || Number(old.qty || 0)!==Number(item.qty || 0)
+          || Number(old.unitPrice || 0)!==Number(item.unitPrice || 0);
+      });
+
+      target.items=incoming;
+
+      if(changed){
+        renderShoppingLists();
+      }else{
+        renderShoppingSummary(target);
       }
-      renderShoppingLists();
     }
   );
 }
@@ -1417,10 +1433,8 @@ async function saveShoppingListForm(e){
       familyShoppingLists.unshift(created);
       appState.shoppingActiveListId=created.id;
 
-      closeModal();
-      renderShoppingLists();
       setupFamilyShoppingItemsWatcher(cloud);
-      await saveVault();
+      await commitStateChange();
 
       toast('Lista criada e compartilhada com a família.','success');
       navigate('shopping');
@@ -1555,14 +1569,16 @@ function scheduleShoppingAutosave(item){
   }
 
   if(shared && item){
+    const familyId=familyContext?.family?.id || '';
+    const listId=getActiveShoppingList()?.id || '';
+
     const timer=setTimeout(async function(){
       try{
-        const list=getActiveShoppingList();
-        if(!list || !familyContext?.family?.id) return;
+        if(!familyId || !listId) return;
 
         await window.StopGastosCloud.saveFamilyShoppingItem(
-          familyContext.family.id,
-          list.id,
+          familyId,
+          listId,
           clone(item)
         );
 

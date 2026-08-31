@@ -872,10 +872,17 @@
         <label class="field">Dia do mês<input id="recDay" required type="number" min="1" max="31" /></label>
         <label class="field">Categoria<select id="recCategory" required></select></label>
         <label class="field">Pagamento<select id="recPayment"><option>Débito automático</option><option>Pix</option><option>Cartão de crédito</option><option>Vale-refeição</option><option>Vale-alimentação</option><option>Vale-combustível</option><option>Boleto</option><option>Transferência</option><option>Outro</option></select></label>
-        <label id="recCardWrap" class="field recurring-card-field" hidden>Cartão vinculado
-          <select id="recCard"><option value="">Selecione um cartão</option></select>
-          <small class="field-help">O custo será lançado automaticamente na fatura deste cartão.</small>
-        </label>
+        <div id="recCardWrap" class="recurring-credit-options span-2" hidden>
+          <label class="field recurring-card-field">Cartão vinculado
+            <select id="recCard"><option value="">Selecione um cartão</option></select>
+            <small class="field-help">O custo será lançado automaticamente neste cartão/benefício.</small>
+          </label>
+          <label id="recInstallmentsWrap" class="field recurring-installments-field">Parcelamento
+            <input id="recInstallments" type="number" min="1" max="60" step="1" value="1" inputmode="numeric" />
+            <small class="field-help">1 = à vista. Use 2 ou mais para dividir a compra nas próximas faturas.</small>
+          </label>
+          <div id="recInstallmentPreview" class="installment-preview span-2">À vista</div>
+        </div>
         <label class="check-row span-2"><input id="recActive" type="checkbox" checked /> Ativo e gerar automaticamente</label>
         <div class="modal-actions span-2"><button type="button" class="btn soft modal-cancel">Cancelar</button><button class="btn primary" type="submit">Salvar recorrência</button></div>
       </form>

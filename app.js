@@ -99,6 +99,31 @@ function hideLoading(){
   document.body.classList.remove('is-loading');
 }
 
+function waitForCloudReady(timeoutMs=8000){
+  const existing=window.StopGastosCloud;
+  if(existing && existing.ready) return Promise.resolve(existing);
+
+  return new Promise(function(resolve,reject){
+    let done=false;
+    const finish=function(value,error){
+      if(done) return;
+      done=true;
+      window.removeEventListener('stopgastos:cloud-ready',onReady);
+      clearTimeout(timer);
+      if(error) reject(error); else resolve(value);
+    };
+    const onReady=function(){
+      const cloud=window.StopGastosCloud;
+      if(cloud && cloud.ready) finish(cloud);
+    };
+    const timer=setTimeout(function(){
+      finish(null,new Error('O módulo Firebase demorou para iniciar. Atualize a página e tente novamente.'));
+    },timeoutMs);
+    window.addEventListener('stopgastos:cloud-ready',onReady);
+    onReady();
+  });
+}
+
 async function withLoading(title,message,task){
   showLoading(title,message);
   try{
@@ -1700,26 +1725,44 @@ async function handleCloudUser(user){
 }
 
 async function cloudSignIn(){
-  return withLoading("Entrando com Google…","Aguardando a autenticação segura do Google.",async function(){
-  const cloud=window.StopGastosCloud;
-  if(!cloud || !cloud.configured){
-    toast('A integração Firebase ainda precisa receber a configuração do projeto.','info');
-    navigate('settings');
-    return;
-  }
+  const buttons=['googleLoginBtn','googleSettingsBtn']
+    .map(id=>$('#'+id))
+    .filter(Boolean);
+
+  buttons.forEach(function(btn){
+    btn.disabled=true;
+    btn.dataset.originalText=btn.dataset.originalText || btn.innerHTML;
+    btn.innerHTML='<span class="button-spinner" aria-hidden="true"></span> Abrindo Google…';
+  });
+
   try{
+    const cloud=await waitForCloudReady();
+
+    if(!cloud || !cloud.configured){
+      toast('A integração Firebase ainda precisa receber a configuração do projeto.','info');
+      navigate('settings');
+      return;
+    }
+
     setCloudStatus('syncing','Abrindo login Google…');
     await cloud.signInGoogle();
   }catch(err){
     if(err && err.code==='auth/unauthorized-domain'){
       toast('O domínio do GitHub Pages precisa ser autorizado no Firebase Authentication.','error');
+    }else if(err && err.code==='auth/popup-closed-by-user'){
+      toast('O login Google foi cancelado.','info');
     }else{
       toast('Não foi possível entrar com Google: '+(err.message || 'erro desconhecido'),'error');
     }
     renderCloudUi();
+  }finally{
+    buttons.forEach(function(btn){
+      btn.disabled=false;
+      if(btn.dataset.originalText){
+        btn.innerHTML=btn.dataset.originalText;
+      }
+    });
   }
-
-  });
 }
 
 async function cloudSignOut(){

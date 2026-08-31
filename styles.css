@@ -872,6 +872,30 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
 .rank-info small{margin-top:2px;color:var(--muted);font-size:8px}
 .rank-row strong{font-size:10px}
 
+
+.family-load-error{
+  margin-bottom:13px;
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  align-items:center;
+  gap:12px;
+  border-color:rgba(255,95,109,.28);
+  background:linear-gradient(115deg,rgba(255,95,109,.07),transparent 48%),var(--surface);
+}
+.family-load-error-icon{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  color:var(--danger);
+  background:rgba(255,95,109,.11);
+  font-size:18px;
+  font-weight:900;
+}
+.family-load-error h3{margin:3px 0 4px;font-size:13px}
+.family-load-error p{margin:0;font-size:9px;line-height:1.5}
+
 /* Family */
 .family-hero{
   min-height:126px;
@@ -1212,6 +1236,8 @@ tbody tr:hover{background:rgba(123,97,255,.04)}
   .family-onboarding{grid-template-columns:1fr}
   .family-action-card{min-height:0}
   .family-notification-card{grid-template-columns:36px minmax(0,1fr)}
+  .family-load-error{grid-template-columns:36px minmax(0,1fr)}
+  .family-load-error .btn{grid-column:1/-1;width:100%}
   .family-notification-actions{grid-column:1/-1;justify-content:stretch}
   .family-notification-actions .btn{flex:1}
   .family-member-row{grid-template-columns:34px minmax(0,1fr) auto}

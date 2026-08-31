@@ -193,6 +193,8 @@ O projeto inclui workflow em `.github/workflows/pages.yml` para publicação aut
 - Reduzir o parcelamento também remove parcelas excedentes
 - Cada parcela é posicionada na fatura correta conforme fechamento e vencimento do cartão
 - Custos fixos pagos com cartão de crédito também possuem quantidade de parcelas
-- Um lançamento automático originado de custo fixo mantém o parcelamento alinhado com sua recorrência
+- Um custo fixo parcelado cria uma **série única** ancorada no mês da compra; ele não cria uma nova série parcelada a cada mês
+- Lançamentos antigos vinculados por `sourceRecurringId` continuam atualizando o custo fixo mesmo sem o campo legado `sourceType`
+- As parcelas recriadas preservam o vínculo com a recorrência de origem
 - Excluir uma compra parcelada remove o grupo completo de parcelas
 

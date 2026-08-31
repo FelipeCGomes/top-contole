@@ -11,6 +11,7 @@ Aplicação web responsiva para gestão financeira pessoal e familiar, construí
 - Contas e carteiras com saldo individual e consolidado
 - Transferências entre contas
 - Cartões de crédito, vale-refeição, vale-alimentação, vale-combustível e outros benefícios
+- Cartões usam contraste automático conforme a cor escolhida, inclusive benefícios claros
 - Compras parceladas com quantidade de parcelas, valor por parcela e projeção futura
 - Contas a pagar e receber
 - Custos fixos e assinaturas somente para despesas recorrentes
